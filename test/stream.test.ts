@@ -31,6 +31,28 @@ describe('stream transcription DSL', () => {
     expect(south.calls.some((c) => c.type === 'pon' && c.calledTile === 41)).toBe(true);
   });
 
+  it('relative pon: East discards 2m, spon ⇒ North pons (+ backfills haipai)', () => {
+    //                                     N haipai has 11 tiles, no 2m
+    const s = 'e1 123456789m1234z1z 123456789p1234z 123456789s1234z 345678999m12z 2m spon 9m ryuukyoku';
+    const { game, diagnostics } = parseStream(s);
+    const north = game.kyokus[0].players[3];
+    expect(north.calls.some((c) => c.type === 'pon' && c.calledTile === 12)).toBe(true);
+    expect(north.haipai.filter((t) => t === 12).length).toBe(2); // backfilled two 2m
+    expect(diagnostics.some((d) => /backfill/i.test(d.message))).toBe(true);
+  });
+
+  it('relative pon maps t/k/s to toimen/kamicha/shimocha of the caller', () => {
+    // East (seat0) discards; caller for each relative prefix:
+    const mk = (pfx: string) => {
+      const s = `e1 123456789m1234z1z 111p123456789p 111s123456789s 111z1234567z11m 1m ${pfx}pon 9m ryuukyoku`;
+      const g = parseStream(s).game.kyokus[0];
+      return [0, 1, 2, 3].find((seat) => g.players[seat].calls.some((c) => c.type === 'pon'));
+    };
+    expect(mk('t')).toBe(2); // toimen of East = West
+    expect(mk('k')).toBe(1); // kamicha-pon: caller is East's shimocha = South
+    expect(mk('s')).toBe(3); // shimocha-pon: caller is East's kamicha = North
+  });
+
   it('flags ? as missing but keeps parsing', () => {
     const s = 'e1 1112345678999m 123456789p1234z5z 123456789s1234z5z 123456789p1234z5z 1z ? 8p ryuukyoku';
     const { missing, diagnostics } = parseStream(s);

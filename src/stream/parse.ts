@@ -14,7 +14,12 @@
  *   haipai    123m456p..    optionally name-prefixed  "Alice:123m..."
  *   draw      5m | ?        (? = unseen/missed, flagged)
  *   discard   3p | x | x3p | r3p | riichi 3p | ?   (x=tsumogiri, r=riichi)
- *   call      p|c|pon|chi|kan|k|mk  optionally seat-prefixed (wp, westpon)
+ *   call      p|c|pon|chi|kan|k|mk. Optional caller prefix:
+ *               relative to the discarder — shimocha spon/shimopon,
+ *               toimen tpon/toimenpon, kamicha kpon/kamipon;
+ *               or absolute seat — wp/westpon, eastpon, southpon, npon.
+ *             An explicitly-attributed pon/kan backfills the caller's hand
+ *             (and haipai) with the needed tiles if they weren't entered.
  *   result    tsumo | ron[seat] | ryuukyoku
  *
  * The parser tracks all four hands so calls attribute to the holder and
@@ -51,9 +56,47 @@ function tokenize(input: string): Tok[] {
 }
 
 const WIND_LETTER: Record<string, number> = { e: 0, s: 4, w: 8, n: 12 };
-const SEAT_LETTER: Record<string, Seat> = { e: 0, s: 1, w: 2, n: 3 };
 
 function fixedIndex(seat: Seat, round: number): Seat { return ((round + seat) % 4) as Seat; }
+
+/** Relative position of the DISCARDER as seen from the calling player. */
+type RelPos = 'shimo' | 'toimen' | 'kami';
+interface ParsedCall { kind: 'pon' | 'chi' | 'kan'; rel?: RelPos; abs?: Seat; }
+
+/** Caller seat given the discarder and where the discarder sits relative to the caller. */
+function callerFromRel(discarder: Seat, rel: RelPos): Seat {
+  // shimo: discarder is the caller's shimocha ⇒ caller is the discarder's kamicha
+  if (rel === 'shimo') return ((discarder + 3) % 4) as Seat;
+  if (rel === 'toimen') return ((discarder + 2) % 4) as Seat;
+  return ((discarder + 1) % 4) as Seat; // kami: caller is the discarder's shimocha
+}
+
+function interpPrefix(p: string): { rel?: RelPos; abs?: Seat } {
+  switch (p) {
+    case 'toimen': case 't': return { rel: 'toimen' };
+    case 'kamicha': case 'kami': case 'k': return { rel: 'kami' };
+    case 'shimocha': case 'shimo': case 's': return { rel: 'shimo' };
+    case 'east': case 'e': return { abs: 0 };
+    case 'south': return { abs: 1 };
+    case 'west': case 'w': return { abs: 2 };
+    case 'north': case 'n': return { abs: 3 };
+    default: return {};
+  }
+}
+
+const PREFIX = '(toimen|kamicha|kami|shimocha|shimo|east|south|west|north|[tksewn])';
+/** Classify a call token: pon/chi/kan with an optional relative or absolute prefix. */
+function parseCall(raw: string): ParsedCall | null {
+  const t = raw.toLowerCase();
+  if (/^(pon|p)$/.test(t)) return { kind: 'pon' };
+  if (/^(chi|c)$/.test(t)) return { kind: 'chi' };
+  if (/^(kan|mk|minkan|daiminkan|kakan|ankan|k)$/.test(t)) return { kind: 'kan' };
+  let m: RegExpExecArray | null;
+  if ((m = new RegExp(`^${PREFIX}(pon|p)$`).exec(t))) return { kind: 'pon', ...interpPrefix(m[1]) };
+  if ((m = new RegExp(`^${PREFIX}(kan|mk|k)$`).exec(t))) return { kind: 'kan', ...interpPrefix(m[1]) };
+  if ((m = new RegExp(`^${PREFIX}(chi|c)$`).exec(t))) return { kind: 'chi', ...interpPrefix(m[1]) };
+  return null;
+}
 
 /** Mutable per-seat state during parsing (current-hand seats: 0=E..3=N). */
 interface PS {
@@ -123,12 +166,6 @@ export function parseStream(input: string): StreamParseResult {
   const asRiichi = (t: string) => /^(riichi|r)([0-9].*[mpsz])$/i.exec(t);
   const asTsumogiri = (t: string) => /^(tsumogiri|x)([0-9].*[mpsz])?$/i.exec(t);
   const asResult = (t: string) => /^(tsumo|ron|ryuukyoku|ryukyoku|draw|exhaustive)$/i.exec(t);
-  const asCall = (t: string) => /^(east|south|west|north|[eswn])?(pon|chi|minkan|kakan|ankan|mk|ck|ak|kan|p|c|k)$/i.exec(t);
-  const seatOfPrefix = (pfx: string | undefined): Seat | null => {
-    if (!pfx) return null;
-    const c = pfx[0].toLowerCase();
-    return c in SEAT_LETTER ? SEAT_LETTER[c] : null;
-  };
 
   function startKyoku(rt: RegExpExecArray) {
     if (players) closeKyoku();
@@ -173,29 +210,36 @@ export function parseStream(input: string): StreamParseResult {
 
   const playerSeat = (p: PS): Seat => (players!.indexOf(p) as Seat);
 
-  function handleCall(tok: Tok, cm: RegExpExecArray) {
+  /** Backfill missing copies of a tile into a player's hand + haipai (used when a
+   *  call is explicitly attributed but the hand wasn't fully entered). */
+  function ensureTiles(p: PS, tile: TenhouTile, need: number, tok: Tok) {
+    const deficit = need - countMatch(p, tile);
+    if (deficit > 0) { for (let i = 0; i < deficit; i++) { p.hand.push(tile); p.haipai.push(tile); } warn(tok, `backfilled ${deficit}×${tile} into ${['E', 'S', 'W', 'N'][playerSeat(p)]}'s hand`, 'info'); }
+  }
+
+  function handleCall(tok: Tok, call: ParsedCall) {
     if (!players || !lastDiscard) { warn(tok, 'call with no preceding discard'); return; }
-    const kw = cm[2].toLowerCase();
-    const isChi = kw === 'chi' || kw === 'c';
-    const isKan = /kan|k|mk|ck|ak/.test(kw);
-    const prefixSeat = seatOfPrefix(cm[1]);
+    const isChi = call.kind === 'chi';
+    const isKan = call.kind === 'kan';
     const tile = lastDiscard.tile;
     const fromSeat = lastDiscard.seat;
 
-    // Determine caller.
-    let caller: Seat | null = prefixSeat;
-    if (caller === null) {
-      if (isChi) {
-        caller = next(fromSeat); // only shimocha may chi
-      } else {
-        const need = isKan ? 3 : 2;
-        const candidates = ([0, 1, 2, 3] as Seat[]).filter((s) => s !== fromSeat && countMatch(players![s], tile) >= need);
-        if (candidates.length === 1) caller = candidates[0];
-        else if (candidates.length === 0) { warn(tok, `no player can ${kw} ${tile}`); return; }
-        else { warn(tok, `ambiguous ${kw}; prefix a seat (e.g. wp)`); caller = candidates[0]; }
-      }
+    // Determine caller: explicit (relative/absolute prefix) or inferred from hands.
+    let caller: Seat | null = null;
+    let explicit = false;
+    if (call.rel) { caller = callerFromRel(fromSeat, call.rel); explicit = true; }
+    else if (call.abs !== undefined) { caller = call.abs; explicit = true; }
+    else if (isChi) { caller = next(fromSeat); }
+    else {
+      const need = isKan ? 3 : 2;
+      const candidates = ([0, 1, 2, 3] as Seat[]).filter((s) => s !== fromSeat && countMatch(players![s], tile) >= need);
+      if (candidates.length === 1) caller = candidates[0];
+      else if (candidates.length === 0) { warn(tok, `no player can ${call.kind} ${tile}`); return; }
+      else { warn(tok, `ambiguous ${call.kind}; prefix a seat (e.g. spon)`); caller = candidates[0]; }
     }
+    if (caller === fromSeat) { warn(tok, 'a player cannot call their own discard'); return; }
     const cp = players[caller];
+    if (explicit && !isChi) ensureTiles(cp, tile, isKan ? 3 : 2, tok);
 
     if (isKan) {
       // daiminkan: consume 3 from hand + the called tile
@@ -271,11 +315,11 @@ export function parseStream(input: string): StreamParseResult {
     const res = asResult(t);
     if (res) { handleResult(tok, res); continue; }
 
-    const cm = asCall(t);
-    if (cm && !/^[eswn][1-4]/i.test(t)) {
-      const kw = cm[2].toLowerCase();
-      if (/kan|k|mk|ak|ck/.test(kw) && isExpect('discard')) { handleOwnTurnKan(tok, kw); continue; }
-      handleCall(tok, cm); midTurnSeat = turn; continue;
+    const call = parseCall(t);
+    if (call) {
+      // A bare kan on your own turn (after drawing) is an ankan/kakan.
+      if (call.kind === 'kan' && isExpect('discard') && !call.rel && call.abs === undefined) { handleOwnTurnKan(tok, 'kan'); continue; }
+      handleCall(tok, call); midTurnSeat = turn; continue;
     }
 
     // unknown / missed
