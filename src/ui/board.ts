@@ -4,7 +4,7 @@
 
 import type { Kyoku, PlayerHand } from '../core/model.js';
 import type { TenhouTile } from '../core/tiles.js';
-import { tileImg } from './tileEl.js';
+import { tileImg, tileBack } from './tileEl.js';
 import { roundName } from './state.js';
 import { el } from './dom.js';
 
@@ -53,6 +53,10 @@ export function scoreEnglish(scoreText?: string): string | undefined {
 }
 
 const miniTile = (t: TenhouTile, cls = ''): HTMLElement => tileImg(t, cls);
+
+/** Seats whose concealed hand is currently hidden (shown as tile backs).
+ *  Persists across re-renders and mode switches so a toggle stays put. */
+const hiddenHands = new Set<number>();
 
 /** Approximate concealed hand for the editor's Kyoku: haipai + draws − discards − melds. */
 function reconstructHand(p: PlayerHand): TenhouTile[] {
@@ -125,23 +129,30 @@ function meldsEl(melds: BoardMeld[], seat: number): HTMLElement {
 
 function station(view: BoardView, seat: number): HTMLElement {
   const s = view.seats[seat];
+  const hide = hiddenHands.has(seat);
   const flipped = seat === 1 || seat === 2; // South/West read right-to-left once rotated
   const hand = [...s.hand];
   if (flipped) hand.reverse();
-  const tiles: HTMLElement[] = hand.map((t) => miniTile(t));
+  const tiles: HTMLElement[] = hand.map((t) => hide ? tileBack() : miniTile(t));
   if (s.drawn !== undefined) {
-    const extra = [el('span', { class: 'hand-gap' }), miniTile(s.drawn, 'drawn')];
+    const drawn = hide ? tileBack('drawn') : miniTile(s.drawn, 'drawn');
+    const extra = [el('span', { class: 'hand-gap' }), drawn];
     if (flipped) tiles.unshift(extra[1], extra[0]); else tiles.push(...extra);
   }
   return el('div', { class: `station station-${POS[seat]}` }, [el('div', { class: 'hand' }, tiles)]);
 }
 
-function scoreBlock(view: BoardView, seat: number): HTMLElement {
+function scoreBlock(view: BoardView, seat: number, rerender: () => void): HTMLElement {
   const s = view.seats[seat];
   const isDealer = (view.round % 4) === seat;
   const wind = WINDS[((seat - (view.round % 4)) + 4) % 4];
+  const hidden = hiddenHands.has(seat);
+  const eye = el('button', {
+    class: `eye${hidden ? ' off' : ''}`, title: hidden ? 'Show hand' : 'Hide hand',
+    onClick: (e: Event) => { e.stopPropagation(); if (hidden) hiddenHands.delete(seat); else hiddenHands.add(seat); rerender(); },
+  }, [hidden ? '🙈' : '👁']);
   return el('div', { class: `sc sc-${POS[seat]}` }, [
-    el('div', { class: 'sc-head' }, [el('span', { class: `wind wind-${wind}${isDealer ? ' dealer' : ''}` }, [wind]), el('span', { class: 'sc-name' }, [s.name])]),
+    el('div', { class: 'sc-head' }, [el('span', { class: `wind wind-${wind}${isDealer ? ' dealer' : ''}` }, [wind]), el('span', { class: 'sc-name' }, [s.name]), eye]),
     el('div', { class: 'sc-pts' }, [String(s.score)]),
     ...(s.riichi ? [el('div', { class: 'stick' })] : []),
   ]);
@@ -156,7 +167,8 @@ export function renderBoardView(container: HTMLElement, view: BoardView | undefi
     ...(view.sticks ? [el('div', { class: 'bc-sticks' }, [`供託 ${view.sticks}`])] : []),
     ...(view.result ? [resultEl(view.result, view.seats)] : []),
   ]);
-  const center = el('div', { class: 'pond-center' }, [scoreBlock(view, 2), scoreBlock(view, 3), mid, scoreBlock(view, 1), scoreBlock(view, 0)]);
+  const rerender = () => renderBoardView(container, view);
+  const center = el('div', { class: 'pond-center' }, [scoreBlock(view, 2, rerender), scoreBlock(view, 3, rerender), mid, scoreBlock(view, 1, rerender), scoreBlock(view, 0, rerender)]);
   const pond = el('div', { class: 'pond' }, [center]);
   for (let s = 0; s < 4; s++) pond.append(riverEl(view.seats[s].river, s), meldsEl(view.seats[s].melds, s));
   container.append(el('div', { class: 'board' }, [station(view, 2), station(view, 3), pond, station(view, 1), station(view, 0)]));

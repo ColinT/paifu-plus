@@ -94,6 +94,10 @@ button, input, select { font: inherit; color: inherit; }
 .bc-result-line .res-who { font-weight: 700; }
 .bc-result-score { margin-top: 2px; font-size: 10px; color: #cfe; text-align: center; }
 
+.sc-head .eye { background: none; border: 0; padding: 0; cursor: pointer; font-size: 11px; line-height: 1; opacity: .5; filter: grayscale(1); }
+.sc-head .eye:hover { opacity: 1; filter: none; }
+.sc-head .eye.off { opacity: .95; filter: none; }
+
 .river { display: grid; grid-template-columns: repeat(6, auto); gap: 7px 1px; align-content: start; justify-content: center; --h: 34px; }
 .riv-bottom { grid-area: 3 / 2; } .riv-top { grid-area: 1 / 2; transform: rotate(180deg); }
 .riv-right { grid-area: 2 / 3; transform: rotate(270deg); } .riv-left { grid-area: 2 / 1; transform: rotate(90deg); }
@@ -118,6 +122,20 @@ button, input, select { font: inherit; color: inherit; }
 /* background layers are (face, front): scale the face down so the symbol sits
    inside the tile with padding, while the tile body (front) fills the box. */
 .tf { display: block; width: calc(var(--h, 40px) * 0.75); height: var(--h, 40px); background-repeat: no-repeat; background-position: center; background-size: 74%, contain; }
+
+/* Face-down tile: the SVG ships no back, so tint the blank front into an amber
+   back with a filter, then lay a subtle diagonal weave over it (on the outer
+   box, so it is not re-tinted by the filter). */
+.bt.back { position: relative; }
+.bt.back .tf {
+  background-size: contain;
+  filter: brightness(0.62) sepia(1) saturate(6) hue-rotate(-12deg) brightness(1.05);
+}
+.bt.back::after {
+  content: ''; position: absolute; inset: 13%; pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, .3); border-radius: 12%;
+  background: repeating-linear-gradient(45deg, rgba(0,0,0,.18) 0 3px, rgba(255,255,255,.05) 3px 6px);
+}
 .board-empty { color: var(--muted); padding: 30px; }
 
 .brand { font-weight: 700; letter-spacing: .3px; margin-right: 6px; }

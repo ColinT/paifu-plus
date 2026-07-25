@@ -17,3 +17,16 @@ export function tileImg(t: TenhouTile, cls = ''): HTMLElement {
   outer.append(inner);
   return outer;
 }
+
+/** A face-down tile: the blank front SVG, tinted into a "back" via a CSS filter
+ *  (the tile set ships no back art). Same footprint as a real tile. */
+export function tileBack(cls = ''): HTMLElement {
+  const outer = document.createElement('span');
+  outer.className = `bt back ${cls}`.trim();
+  outer.title = 'concealed';
+  const inner = document.createElement('i');
+  inner.className = 'tf';
+  inner.style.backgroundImage = `url(${frontUrl})`;
+  outer.append(inner);
+  return outer;
+}
