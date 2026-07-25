@@ -62,18 +62,27 @@ function meldsEl(p: PlayerHand, seat: number): HTMLElement {
   return m;
 }
 
+/** A player's station is now just the hand (name/score moved to the centre). */
 function station(k: Kyoku, seat: number): HTMLElement {
+  const hand = reconstructHand(k.players[seat]);
+  return el('div', { class: `station station-${POS[seat]}` }, [
+    el('div', { class: 'hand' }, hand.map((t) => miniTile(t))),
+  ]);
+}
+
+/** Per-seat scoreboard block shown in the centre, rotated to face its seat. */
+function scoreBlock(k: Kyoku, seat: number): HTMLElement {
   const p = k.players[seat];
   const isDealer = (k.round % 4) === seat;
   const wind = WINDS[((seat - (k.round % 4)) + 4) % 4];
-  const hand = reconstructHand(p);
-  return el('div', { class: `station station-${POS[seat]}` }, [
-    el('div', { class: 'seat-head' }, [
+  const inRiichi = p.turns.some((t) => t.riichi);
+  return el('div', { class: `sc sc-${POS[seat]}` }, [
+    el('div', { class: 'sc-head' }, [
       el('span', { class: `wind wind-${wind}${isDealer ? ' dealer' : ''}` }, [wind]),
-      el('span', { class: 'seat-name' }, [p.name]),
-      el('span', { class: 'seat-score' }, [String(p.startScore + p.scoreDelta)]),
+      el('span', { class: 'sc-name' }, [p.name]),
     ]),
-    el('div', { class: 'hand' }, hand.map((t) => miniTile(t))),
+    el('div', { class: 'sc-pts' }, [String(p.startScore + p.scoreDelta)]),
+    ...(inRiichi ? [el('div', { class: 'stick' })] : []),
   ]);
 }
 
@@ -81,12 +90,13 @@ export function renderBoard(container: HTMLElement, k: Kyoku | undefined): void 
   container.replaceChildren();
   if (!k) { container.append(el('div', { class: 'board-empty' }, ['No hand to display'])); return; }
 
-  const center = el('div', { class: 'pond-center' }, [
+  const mid = el('div', { class: 'sc-mid' }, [
     el('div', { class: 'bc-round' }, [`${roundName(k.round)}${k.honba ? ` · ${k.honba}b` : ''}`]),
-    el('div', { class: 'bc-dora' }, ['Dora ', ...k.doraIndicators.map((t) => miniTile(t)), ...(k.uraIndicators.length ? [el('span', { class: 'ura-lab' }, ['Ura']), ...k.uraIndicators.map((t) => miniTile(t))] : [])]),
-    el('div', { class: 'bc-sticks' }, [`${k.riichiSticks}×1000`]),
+    el('div', { class: 'bc-dora' }, ['ドラ ', ...k.doraIndicators.map((t) => miniTile(t)), ...(k.uraIndicators.length ? [el('span', { class: 'ura-lab' }, ['裏']), ...k.uraIndicators.map((t) => miniTile(t))] : [])]),
+    ...(k.riichiSticks ? [el('div', { class: 'bc-sticks' }, [`供託 ${k.riichiSticks}`])] : []),
     el('div', { class: `bc-result ${k.result.kind}` }, [resultText(k)]),
   ]);
+  const center = el('div', { class: 'pond-center' }, [scoreBlock(k, 2), scoreBlock(k, 3), mid, scoreBlock(k, 1), scoreBlock(k, 0)]);
 
   const pond = el('div', { class: 'pond' }, [center]);
   for (let s = 0; s < 4; s++) { pond.append(riverEl(k.players[s], s), meldsEl(k.players[s], s)); }

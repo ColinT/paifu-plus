@@ -39,13 +39,10 @@ button, input, select { font: inherit; color: inherit; }
 
 /* board: stations on the four sides, a central pond of rivers + melds */
 .board-wrap { display: flex; justify-content: center; }
-.board { display: grid; grid-template-columns: 1.1fr 2fr 1.1fr; grid-template-rows: 1fr 2.2fr 1fr; gap: 4px; width: 100%; max-width: 1100px; aspect-ratio: 1 / 0.92; background: #14351f; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
-.station { background: rgba(0,0,0,.18); border-radius: 6px; padding: 6px; display: flex; flex-direction: column; gap: 3px; overflow: visible; align-self: center; }
+.board { display: grid; grid-template-columns: 52px 1fr 52px; grid-template-rows: 52px 1fr 52px; gap: 4px; width: 100%; max-width: 900px; aspect-ratio: 1 / 0.82; background: #14351f; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.station { padding: 2px; display: flex; flex-direction: column; overflow: visible; align-self: center; justify-self: center; }
 .station-top { grid-area: 1 / 2; } .station-bottom { grid-area: 3 / 2; }
 .station-left { grid-area: 2 / 1; } .station-right { grid-area: 2 / 3; }
-.seat-head { display: flex; align-items: center; gap: 5px; font-size: 12px; }
-.seat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
-.seat-score { color: #cfe; font-variant-numeric: tabular-nums; }
 .wind.dealer { outline: 2px solid #ffd66b; }
 .station .hand { display: flex; flex-wrap: nowrap; gap: 1px; --h: 44px; }
 .station-left .hand, .station-right .hand { flex-direction: column; align-items: center; }
@@ -58,11 +55,22 @@ button, input, select { font: inherit; color: inherit; }
 .station-left .hand .tf { transform: rotate(90deg); }
 
 .pond { grid-area: 2 / 2; display: grid; grid-template-columns: 1fr 1.3fr 1fr; grid-template-rows: 1fr 1.3fr 1fr; place-items: center; gap: 2px; }
-.pond-center { grid-area: 2 / 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center; }
+/* centre scoreboard: each seat's wind/name/points rotated to face it, round
+   info + dora + result in the middle, a riichi stick under any riichi player. */
+.pond-center { grid-area: 2 / 2; display: grid; grid-template-columns: auto auto auto; grid-template-rows: auto auto auto; place-items: center; gap: 6px 12px; text-align: center; }
+.sc { display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 11px; color: var(--fg); }
+.sc-bottom { grid-area: 3 / 2; } .sc-top { grid-area: 1 / 2; transform: rotate(180deg); }
+.sc-right { grid-area: 2 / 3; transform: rotate(-90deg); } .sc-left { grid-area: 2 / 1; transform: rotate(90deg); }
+.sc-head { display: flex; align-items: center; gap: 4px; }
+.sc-name { max-width: 74px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-pts { color: #cfe; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stick { width: 44px; height: 6px; background: #f4f4f4; border-radius: 3px; box-shadow: 0 0 2px rgba(0,0,0,.5); position: relative; margin-top: 1px; }
+.stick::after { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; border-radius: 50%; background: #e33; transform: translate(-50%, -50%); }
+.sc-mid { grid-area: 2 / 2; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .bc-round { font-weight: 700; } .bc-sticks, .bc-dora { font-size: 11px; color: #cfe; display: flex; align-items: center; gap: 2px; }
-.bc-dora { --h: 26px; }
+.bc-dora { --h: 24px; }
 .ura-lab { margin-left: 4px; }
-.bc-result { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(0,0,0,.3); max-width: 150px; }
+.bc-result { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(0,0,0,.3); max-width: 140px; }
 .bc-result.tsumo, .bc-result.ron { color: #ffd66b; }
 
 .river { display: grid; grid-template-columns: repeat(6, auto); gap: 7px 1px; align-content: start; justify-content: center; --h: 34px; }

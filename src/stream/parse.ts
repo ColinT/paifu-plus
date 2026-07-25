@@ -148,6 +148,7 @@ export function parseStream(input: string): StreamParseResult {
       };
     }
     const res: KyokuResult = result ?? { kind: 'ryuukyoku', deltas: [0, 0, 0, 0] };
+    for (let i = 0; i < 4; i++) ordered[i].scoreDelta = res.deltas[i] ?? 0; // reflect result in each player's score
     kyokus.push({ round, honba, riichiSticks: startSticks, doraIndicators: dora.slice(), uraIndicators: ura.slice(), players: ordered as [PlayerHand, PlayerHand, PlayerHand, PlayerHand], result: res });
     players = null; phase = 'need-round';
   }
