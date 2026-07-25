@@ -81,7 +81,9 @@ button, input, select { font: inherit; color: inherit; }
 /* image tile: outer .bt is the sizing/footprint box; inner .tf layers the face
    symbol over the tile front and is what rotates. Sized by --h (from context). */
 .bt { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; width: calc(var(--h, 40px) * 0.75); height: var(--h, 40px); }
-.tf { display: block; width: calc(var(--h, 40px) * 0.75); height: var(--h, 40px); background-repeat: no-repeat; background-position: center; background-size: contain; }
+/* background layers are (face, front): scale the face down so the symbol sits
+   inside the tile with padding, while the tile body (front) fills the box. */
+.tf { display: block; width: calc(var(--h, 40px) * 0.75); height: var(--h, 40px); background-repeat: no-repeat; background-position: center; background-size: 74%, contain; }
 .board-empty { color: var(--muted); padding: 30px; }
 
 .brand { font-weight: 700; letter-spacing: .3px; margin-right: 6px; }
