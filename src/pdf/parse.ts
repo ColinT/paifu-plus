@@ -282,8 +282,13 @@ export function parseKyoku(page: RawPage, opts: ParseOptions = {}): Kyoku {
   };
 }
 
+/**
+ * Map a current-hand seat (0=E..3=N) to the fixed tenhou player index. The
+ * dealer of kyoku `round` is player `round % 4`; current-East is the dealer, so
+ * seat s → (round + s) % 4. (Coincides with (seat - round) only for even rounds.)
+ */
 function fixedIndex(seat: Seat, round: number): Seat {
-  return (((seat - round) % 4) + 4) % 4 as Seat;
+  return ((round + seat) % 4) as Seat;
 }
 function orderByFixed<T>(players: PlayerHand[], round: number, pick: (p: PlayerHand) => T): T[] {
   const out = new Array<T>(4);
