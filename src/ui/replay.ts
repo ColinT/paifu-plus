@@ -20,8 +20,15 @@ function resultTextFromLog(result: any): string | undefined {
   const kind = result[0];
   if (typeof kind === 'string' && kind.includes('流')) return 'Exhaustive draw';
   if (typeof kind === 'string' && kind.includes('和')) {
-    const detail = result[2];
-    if (Array.isArray(detail)) { const [who, from, , score] = detail; return who === from ? `P${who} tsumo · ${score}` : `P${who} ron off P${from} · ${score}`; }
+    // One (deltas, detail) pair per winning hand; details sit at indices 2, 4, …
+    const details = result.filter((_, i) => i >= 2 && i % 2 === 0 && Array.isArray(result[i])) as any[][];
+    if (details.length) {
+      const [who0, from0, , score0] = details[0];
+      if (who0 === from0) return `P${who0} tsumo · ${score0}`;
+      const winners = details.map((d) => `P${d[0]}`).join('+');
+      const scores = details.map((d) => d[3]).join(' / ');
+      return `${winners} ron off P${from0} · ${scores}`;
+    }
     return 'Win';
   }
   return undefined;

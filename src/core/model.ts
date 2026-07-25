@@ -28,6 +28,12 @@ export interface Call {
    * Used to interleave the call into the tenhou draw stream.
    */
   turn: number;
+  /**
+   * For a kakan (added kan) only: the later turn at which the existing pon was
+   * upgraded to a kan. `turn` stays the original pon-claim turn, so the emitter
+   * can place the pon meld at the claim and the added-kan meld at the upgrade.
+   */
+  kanTurn?: number;
 }
 
 /** One draw+discard turn for a player. */
@@ -61,15 +67,27 @@ export interface PlayerHand {
 
 export type EndKind = 'tsumo' | 'ron' | 'ryuukyoku';
 
+/** One winning hand. A hand can have several on a double/triple ron. */
+export interface Agari {
+  winner: Seat;
+  winningTile?: TenhouTile;
+  han?: number;
+  fu?: number;
+  yaku?: { name: string; han: number }[];
+  scoreText?: string;
+  /** This agari's own per-seat deltas (tenhou lists one delta array per win). */
+  deltas: [number, number, number, number];
+}
+
 export interface KyokuResult {
   kind: EndKind;
-  /** Winner seat for tsumo/ron. */
+  /** Winner seat for tsumo/ron (the primary/first winner on a multi-ron). */
   winner?: Seat;
   /** Seat that dealt in (ron only). */
   loser?: Seat;
   /** The winning tile (ron/tsumo). */
   winningTile?: TenhouTile;
-  /** Per-seat point deltas for the tenhou result array. */
+  /** Per-seat point deltas for the tenhou result array (combined across wins). */
   deltas: [number, number, number, number];
   /** Seats that were tenpai at an exhaustive draw. */
   tenpai?: Seat[];
@@ -78,6 +96,13 @@ export interface KyokuResult {
   fu?: number;
   yaku?: { name: string; han: number }[];
   scoreText?: string;
+  /**
+   * All winning hands, present only for a double/triple ron (length ≥ 2). Each
+   * carries its own deltas so the tenhou emitter can list one pair per win. The
+   * primary winner is also mirrored in the flat fields above for single-win
+   * consumers (editor, board).
+   */
+  wins?: Agari[];
 }
 
 export interface Kyoku {

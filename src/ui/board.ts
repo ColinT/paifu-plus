@@ -136,5 +136,6 @@ function resultText(k: Kyoku): string {
   const tile = r.winningTile !== undefined ? tileLabel(r.winningTile) : '';
   const score = r.scoreText ? ` · ${r.scoreText}` : '';
   if (r.kind === 'tsumo') return `${who} tsumo ${tile}${score}`;
-  return `${who} ron ${tile}${r.loser !== undefined ? ` off P${r.loser}` : ''}${score}`;
+  const winners = r.wins && r.wins.length > 1 ? r.wins.map((w) => `P${w.winner}`).join('+') : who;
+  return `${winners} ron ${tile}${r.loser !== undefined ? ` off P${r.loser}` : ''}${score}`;
 }

@@ -27,7 +27,7 @@
  * parsing continues, so a partial/observed record still renders.
  */
 
-import type { Game, Kyoku, PlayerHand, Turn, Call, Seat, KyokuResult } from '../core/model.js';
+import type { Game, Kyoku, PlayerHand, Turn, Call, Seat, KyokuResult, Agari } from '../core/model.js';
 import { parseTileNotation, normalizeRed, tilesToNotation } from '../core/tiles.js';
 import type { TenhouTile } from '../core/tiles.js';
 import { scoreWin, agariDeltas, ryuukyokuDeltas, isTenpai, counts } from '../score/index.js';
@@ -56,6 +56,8 @@ function tokenize(input: string): Tok[] {
 }
 
 const WIND_LETTER: Record<string, number> = { e: 0, s: 4, w: 8, n: 12 };
+/** Current-hand seat for a ron winner letter (e=East .. n=North). */
+const SEAT_LETTER: Record<string, Seat> = { e: 0, s: 1, w: 2, n: 3 };
 
 function fixedIndex(seat: Seat, round: number): Seat { return ((round + seat) % 4) as Seat; }
 
@@ -168,7 +170,10 @@ export function parseStream(input: string): StreamParseResult {
   const asUra = (t: string) => /^(ura|u)([0-9].*[mpsz])$/i.exec(t);
   const asRiichi = (t: string) => /^(riichi|r)([0-9].*[mpsz])$/i.exec(t);
   const asTsumogiri = (t: string) => /^(tsumogiri|x)([0-9].*[mpsz])?$/i.exec(t);
-  const asResult = (t: string) => /^(tsumo|ron|ryuukyoku|ryukyoku|draw|exhaustive)$/i.exec(t);
+  // Result token: tsumo, a draw, or a ron optionally prefixed with the winning
+  // seat(s) — "eron", "neron" (double), "newron"/"tripleron" (triple).
+  const asResult = (t: string) => /^(tsumo|ryuukyoku|ryukyoku|draw|exhaustive|tripleron|[eswn]{0,3}ron)$/i.exec(t);
+  const asOwnKan = (t: string) => /^(kakan|ankan)([0-9].*[mpsz])?$/i.exec(t);
 
   function startKyoku(rt: RegExpExecArray) {
     if (players) closeKyoku();
@@ -329,10 +334,20 @@ export function parseStream(input: string): StreamParseResult {
     const res = asResult(t);
     if (res) { handleResult(tok, res); continue; }
 
+    // Explicit own-turn kan with a forced kind (and optional tile): "kakan",
+    // "ankan", "kakan2s". Checked before parseCall so it wins over the generic
+    // kan keyword.
+    const ownKan = asOwnKan(t);
+    if (ownKan && isExpect('discard')) {
+      const tile = ownKan[2] ? parseTileNotation(ownKan[2])[0] : undefined;
+      handleOwnTurnKan(tok, { tile, forceKind: ownKan[1].toLowerCase() as 'ankan' | 'kakan' });
+      continue;
+    }
+
     const call = parseCall(t);
     if (call) {
-      // A bare kan on your own turn (after drawing) is an ankan/kakan.
-      if (call.kind === 'kan' && isExpect('discard') && !call.rel && call.abs === undefined) { handleOwnTurnKan(tok, 'kan'); continue; }
+      // A bare kan on your own turn (after drawing) is an ankan/kakan (inferred).
+      if (call.kind === 'kan' && isExpect('discard') && !call.rel && call.abs === undefined) { handleOwnTurnKan(tok, {}); continue; }
       handleCall(tok, call); midTurnSeat = turn; continue;
     }
 
@@ -361,21 +376,26 @@ export function parseStream(input: string): StreamParseResult {
     else { doDiscard(players![midTurnSeat ?? turn], tok, { tile, tsumogiri: false, riichi: false }); }
   }
 
-  function handleOwnTurnKan(tok: Tok, _kw: string) {
+  function handleOwnTurnKan(tok: Tok, opts: { tile?: TenhouTile; forceKind?: 'ankan' | 'kakan' }) {
     if (!players || midTurnSeat === null) { warn(tok, 'kan with no active turn'); return; }
     const p = players[midTurnSeat];
     const drawn = p.turns[p.turns.length - 1]?.draw;
-    // Determine the kan tile: the just-drawn tile if it makes a set, else warn.
-    const tile = drawn;
-    if (tile === undefined) { warn(tok, 'own-turn kan needs a known drawn tile'); return; }
+    // Kan tile: explicit if given (disambiguates when several are possible),
+    // else the just-drawn tile.
+    const tile = opts.tile ?? drawn;
+    if (tile === undefined) { warn(tok, 'own-turn kan needs a known drawn tile or an explicit tile (e.g. kakan2s)'); return; }
     const inHand = countMatch(p, tile);
     const hasPon = p.calls.find((c) => c.type === 'pon' && normalizeRed(c.calledTile!) === normalizeRed(tile));
-    if (hasPon) {
-      hasPon.type = 'kakan'; hasPon.tiles = [tile, tile, tile, tile]; removeFromHand(p, tile);
-    } else if (inHand >= 4) {
+    const wantKakan = opts.forceKind === 'kakan' || (opts.forceKind === undefined && !!hasPon);
+    const kanTurn = p.turns.length - 1;
+    if (wantKakan) {
+      if (!hasPon) { warn(tok, `no pon of ${tilesToNotation([tile])} to add a kan to`); return; }
+      hasPon.type = 'kakan'; hasPon.tiles = [tile, tile, tile, tile]; hasPon.kanTurn = kanTurn; removeFromHand(p, tile);
+    } else if (opts.forceKind === 'ankan' || inHand >= 4) {
+      if (inHand < 4) { warn(tok, `need 4 concealed ${tilesToNotation([tile])} for an ankan`); return; }
       for (let i = 0; i < 4; i++) removeFromHand(p, tile);
-      p.calls.push({ type: 'ankan', tiles: [tile, tile, tile, tile], turn: p.turns.length - 1 });
-    } else { warn(tok, `cannot kan ${tile} (need 4 concealed or an existing pon)`); return; }
+      p.calls.push({ type: 'ankan', tiles: [tile, tile, tile, tile], turn: kanTurn });
+    } else { warn(tok, `cannot kan ${tilesToNotation([tile])} (need 4 concealed or an existing pon)`); return; }
     // rinshan draw + discard follow for the same player
     expect = 'draw';
   }
@@ -401,6 +421,22 @@ export function parseStream(input: string): StreamParseResult {
     return { deltas: toFixedDeltas(deltas), han: sr.han, fu: sr.fu, yaku: sr.yaku, scoreText: sr.text };
   }
 
+  /** Score one ron hand into an Agari (isolated, fixed-index deltas). */
+  function scoreRon(tok: Tok, w: Seat, winningTile: TenhouTile, from: Seat, honbaArg: number, sticksArg: number): Agari {
+    const p = players![w];
+    const sr = scoreWin({
+      concealed: p.hand.slice(), melds: p.calls.map((c) => ({ type: c.type, tiles: c.tiles })), winningTile, isTsumo: false,
+      seatWind: 27 + w, roundWind: 27 + Math.floor(round / 4),
+      doraIndicators: dora, uraIndicators: ura, riichi: p.riichi, rules: {},
+    });
+    if (!sr.valid) {
+      warn(tok, `${['E', 'S', 'W', 'N'][w]} has no yaku on ${tilesToNotation([winningTile])} — deltas not computed`);
+      return { winner: fixedIndex(w, round), winningTile, deltas: [0, 0, 0, 0] };
+    }
+    const { deltas } = agariDeltas({ winner: w, from, dealerSeat: 0, isTsumo: false, base: sr.base, honba: honbaArg, sticks: sticksArg });
+    return { winner: fixedIndex(w, round), winningTile, han: sr.han, fu: sr.fu, yaku: sr.yaku, scoreText: sr.text, deltas: toFixedDeltas(deltas) };
+  }
+
   function handleResult(tok: Tok, rm: RegExpExecArray) {
     if (!players) return;
     const kind = rm[1].toLowerCase();
@@ -410,12 +446,30 @@ export function parseStream(input: string): StreamParseResult {
       const winTile = players[w].turns[players[w].turns.length - 1]?.draw;
       const scored = winTile !== undefined ? scoreAgari(tok, w, true, winTile, w) : { deltas: [0, 0, 0, 0] as [number, number, number, number] };
       result = { kind: 'tsumo', winner: fixedIndex(w, round), winningTile: winTile, deltas: [0, 0, 0, 0], ...scored };
-    } else if (kind === 'ron') {
-      const w = (midTurnSeat !== null && isExpect('draw') ? turn : (midTurnSeat ?? turn)) as Seat;
-      const winTile = lastDiscard?.tile;
-      const from = lastDiscard?.seat ?? 0 as Seat;
-      const scored = winTile !== undefined ? scoreAgari(tok, w, false, winTile, from) : { deltas: [0, 0, 0, 0] as [number, number, number, number] };
-      result = { kind: 'ron', winner: fixedIndex(w, round), loser: lastDiscard ? fixedIndex(lastDiscard.seat, round) : undefined, winningTile: winTile, deltas: [0, 0, 0, 0], ...scored };
+    } else if (/ron$/.test(kind)) {
+      if (!lastDiscard) { warn(tok, 'ron with no discard to claim'); closeKyoku({ kind: 'ryuukyoku', deltas: [0, 0, 0, 0] }); return; }
+      const from = lastDiscard.seat;
+      const winTile = lastDiscard.tile;
+      // Determine winner seat(s): explicit prefix, tripleron, or inferred single.
+      let winners: Seat[];
+      if (kind === 'tripleron') winners = ([0, 1, 2, 3] as Seat[]).filter((s) => s !== from);
+      else {
+        const prefix = kind.slice(0, -3); // strip "ron"
+        if (prefix) winners = [...prefix].map((ch) => SEAT_LETTER[ch]).filter((s, i, a) => a.indexOf(s) === i && s !== from);
+        else winners = [((midTurnSeat !== null && isExpect('draw') ? turn : (midTurnSeat ?? turn)) as Seat)].filter((s) => s !== from);
+      }
+      if (!winners.length) { warn(tok, 'ron names no valid winner'); closeKyoku({ kind: 'ryuukyoku', deltas: [0, 0, 0, 0] }); return; }
+      // Riichi sticks go to the winner nearest the discarder's right (head bump).
+      const order = [...winners].sort((a, b) => ((a - from + 4) % 4) - ((b - from + 4) % 4));
+      const agaris = order.map((w, i) => scoreRon(tok, w, winTile, from, honba, i === 0 ? sticks : 0));
+      const combined: [number, number, number, number] = [0, 0, 0, 0];
+      for (const a of agaris) for (let i = 0; i < 4; i++) combined[i] += a.deltas[i];
+      const primary = agaris[0];
+      result = {
+        kind: 'ron', winner: primary.winner, loser: fixedIndex(from, round), winningTile: winTile,
+        deltas: combined, han: primary.han, fu: primary.fu, yaku: primary.yaku, scoreText: primary.scoreText,
+        wins: agaris.length > 1 ? agaris : undefined,
+      };
     } else {
       // ryuukyoku: tenpai payments from each hand's shape.
       const tenpaiCS = ([0, 1, 2, 3] as Seat[]).map((s) => isTenpai(counts(players![s].hand), players![s].calls.length));

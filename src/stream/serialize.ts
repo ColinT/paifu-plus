@@ -36,6 +36,14 @@ function relPrefix(caller: Seat, from: Seat): string {
   return d === 1 ? 'k' : d === 2 ? 't' : 's'; // kamicha / toimen / shimocha
 }
 
+/** Ron result token with the winning seat(s): "eron", "neron" (double ron). */
+function ronToken(k: Kyoku): string {
+  const winners = k.result.wins?.length ? k.result.wins.map((w) => w.winner) : (k.result.winner !== undefined ? [k.result.winner] : []);
+  const letters = winners.map((w) => WINDS[((w - k.round) % 4 + 4) % 4]);
+  const uniq = [...new Set(letters)].sort((a, b) => WINDS.indexOf(a) - WINDS.indexOf(b));
+  return uniq.join('') + 'ron';
+}
+
 export function kyokuToStream(k: Kyoku, rk: KyokuReplay): string {
   const toks: string[] = [];
   toks.push(roundToken(k.round, k.honba, k.riichiSticks));
@@ -86,7 +94,9 @@ export function kyokuToStream(k: Kyoku, rk: KyokuReplay): string {
   }
 
   if (k.uraIndicators.length) toks.push('u' + tilesToNotation(k.uraIndicators));
-  toks.push(k.result.kind === 'tsumo' ? 'tsumo' : k.result.kind === 'ron' ? 'ron' : 'ryuukyoku');
+  if (k.result.kind === 'tsumo') toks.push('tsumo');
+  else if (k.result.kind === 'ron') toks.push(ronToken(k));
+  else toks.push('ryuukyoku');
   return toks.join(' ');
 }
 

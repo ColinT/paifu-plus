@@ -87,28 +87,37 @@ export function meldString(call: Call, callerSeat: Seat): string {
   }
 }
 
+/** The pon meld string a kakan started life as (before the 4th tile was added). */
+function ponClaimString(kakan: Call, seat: Seat): string {
+  const t = kakan.calledTile!;
+  return meldString({ type: 'pon', tiles: [t, t, t], calledTile: t, fromSeat: kakan.fromSeat, turn: kakan.turn }, seat);
+}
+
 function buildStreams(p: PlayerHand): { draws: (number | string)[]; discards: (number | string)[] } {
   const draws: (number | string)[] = [];
   const discards: (number | string)[] = [];
 
-  const callByTurn = new Map<number, Call>();
-  for (const c of p.calls) callByTurn.set(c.turn, c);
+  // A kakan spans two turns: the pon claim (call.turn, a pon meld in the DRAW
+  // slot) and the added-kan (call.kanTurn, a "…k…" meld in the DISCARD slot,
+  // after that turn's wall draw — exactly like an ankan). Other calls are one turn.
+  const claimByTurn = new Map<number, Call>();      // draw-slot meld (chi/pon/daiminkan, or a kakan's pon claim)
+  const kanDiscardByTurn = new Map<number, Call>(); // discard-slot kan meld (ankan, or a kakan's added-kan)
+  for (const c of p.calls) {
+    if (c.type === 'ankan') kanDiscardByTurn.set(c.turn, c);
+    else if (c.type === 'kakan') { claimByTurn.set(c.turn, c); if (c.kanTurn !== undefined) kanDiscardByTurn.set(c.kanTurn, c); }
+    else claimByTurn.set(c.turn, c);
+  }
 
   p.turns.forEach((turn, i) => {
-    const call = callByTurn.get(i);
+    // Draw slot: a claim meld, or a wall draw.
+    const claim = claimByTurn.get(i);
+    if (claim) draws.push(claim.type === 'kakan' ? ponClaimString(claim, p.seat) : meldString(claim, p.seat));
+    else if (turn.draw !== undefined) draws.push(turn.draw);
 
-    // Draw slot: a wall draw, or a call meld string (chi/pon/daiminkan) that
-    // replaces the wall draw for this turn.
-    if (call && (call.type === 'chi' || call.type === 'pon' || call.type === 'daiminkan' || call.type === 'kakan')) {
-      draws.push(meldString(call, p.seat));
-    } else if (turn.draw !== undefined) {
-      draws.push(turn.draw);
-    }
-
-    // Discard slot.
-    if (call && call.type === 'ankan') {
-      discards.push(meldString(call, p.seat));
-    } else if (turn.discard !== undefined) {
+    // Discard slot: a kan meld (ankan / added-kan), or a discard.
+    const kan = kanDiscardByTurn.get(i);
+    if (kan) discards.push(meldString(kan, p.seat));
+    else if (turn.discard !== undefined) {
       let d: number | string = turn.tsumogiri ? TSUMOGIRI : turn.discard;
       if (turn.riichi) d = 'r' + d;
       discards.push(d);
@@ -118,20 +127,29 @@ function buildStreams(p: PlayerHand): { draws: (number | string)[]; discards: (n
   return { draws, discards };
 }
 
+function winDetail(winner: Seat, from: Seat, scoreText: string | undefined, gained: number, yaku?: { name: string; han: number }[]): unknown[] {
+  // The scoring engine's string already carries the correct hand value; fall
+  // back to the raw delta only when scoring wasn't computed.
+  const scoreStr = scoreText ?? `${gained >= 0 ? '+' : ''}${gained}点`;
+  const yakuStrs = (yaku ?? []).map((y) => `${y.name}(${y.han}飜)`);
+  return [winner, from, winner, scoreStr, ...yakuStrs];
+}
+
 function resultArray(k: Kyoku): unknown[] {
   const r = k.result;
   if (r.kind === 'ryuukyoku') {
     return ['流局', r.deltas];
   }
-  // 和了 (agari): [winner, from, winner, scoreString, ...yaku(飜)]
+  const from = r.kind === 'tsumo' ? r.winner! : r.loser!;
+  // Double/triple ron: tenhou lists a (deltas, detail) pair per winning hand.
+  if (r.wins && r.wins.length > 1) {
+    const out: unknown[] = ['和了'];
+    for (const w of r.wins) out.push(w.deltas, winDetail(w.winner, from, w.scoreText, w.deltas[w.winner], w.yaku));
+    return out;
+  }
+  // Single win: [combined deltas, [winner, from, winner, scoreString, ...yaku]].
   const winner = r.winner!;
-  const from = r.kind === 'tsumo' ? winner : r.loser!;
-  const gained = r.deltas[winner];
-  // The scoring engine's string already carries the correct hand value; fall
-  // back to the raw delta only when scoring wasn't computed.
-  const scoreStr = r.scoreText ?? `${gained >= 0 ? '+' : ''}${gained}点`;
-  const yakuStrs = (r.yaku ?? []).map((y) => `${y.name}(${y.han}飜)`);
-  return ['和了', r.deltas, [winner, from, winner, scoreStr, ...yakuStrs]];
+  return ['和了', r.deltas, winDetail(winner, from, r.scoreText, r.deltas[winner], r.yaku)];
 }
 
 export function kyokuToLog(k: Kyoku): unknown[] {

@@ -9,8 +9,10 @@
  */
 
 import type { TenhouTile } from './tiles.js';
-import type { Game, Kyoku, PlayerHand, Call, CallType, Turn, Seat, KyokuResult, EndKind } from './model.js';
+import type { Game, Kyoku, PlayerHand, Call, CallType, Turn, Seat, KyokuResult, EndKind, Agari } from './model.js';
 import type { TenhouLog } from './tenhou.js';
+
+const normRed = (t: TenhouTile) => (t === 51 ? 15 : t === 52 ? 25 : t === 53 ? 35 : t);
 
 /** Split a meld string into its ordered tiles and the position/letter of the call marker. */
 function scanMeld(s: string): { tiles: TenhouTile[]; letter: string; letterPos: number } {
@@ -57,13 +59,21 @@ function decodePlayer(
     const turn: Turn = {};
     const d = draws[i];
     if (typeof d === 'number') { turn.draw = d; lastDraw = d; }
-    else if (typeof d === 'string') { calls.push(decodeMeld(d, seat, turns.length)); } // called turn: no wall draw
+    else if (typeof d === 'string') { calls.push(decodeMeld(d, seat, turns.length)); } // chi/pon/daiminkan: called turn, no wall draw
 
     const s = discards[i];
     if (s === undefined) {
       // no discard this turn (winning tsumo turn) — keep the draw, omit discard
     } else if (isKanInDiscard(s)) {
-      calls.push(decodeMeld(s, seat, turns.length)); // ankan/added-kan: no discard this turn
+      const meld = decodeMeld(s, seat, turns.length);
+      if (meld.type === 'kakan') {
+        // Added kan sits after this turn's wall draw and upgrades the open pon.
+        const pon = calls.find((c) => c.type === 'pon' && c.calledTile !== undefined && normRed(c.calledTile) === normRed(meld.calledTile!));
+        if (pon) { pon.type = 'kakan'; pon.tiles = meld.tiles; pon.kanTurn = turns.length; }
+        else calls.push(meld);
+      } else {
+        calls.push(meld); // ankan: no discard this turn
+      }
     } else {
       let riichi = false; let str = String(s);
       if (str.startsWith('r')) { riichi = true; str = str.slice(1); }
@@ -101,30 +111,48 @@ function lastDiscardOf(p: PlayerHand): TenhouTile | undefined {
 }
 
 function decodeResult(raw: unknown, players: PlayerHand[]): KyokuResult {
-  const deltas = [0, 0, 0, 0] as [number, number, number, number];
-  if (!Array.isArray(raw)) return { kind: 'ryuukyoku', deltas };
+  const combined = [0, 0, 0, 0] as [number, number, number, number];
+  if (!Array.isArray(raw)) return { kind: 'ryuukyoku', deltas: combined };
   const kindStr = String(raw[0] ?? '');
-  const rawDeltas = Array.isArray(raw[1]) ? (raw[1] as number[]) : [];
-  for (let i = 0; i < 4; i++) deltas[i] = Math.round(rawDeltas[i] ?? 0);
 
   if (kindStr.includes('流') || !kindStr.includes('和')) {
-    return { kind: 'ryuukyoku', deltas };
+    if (Array.isArray(raw[1])) for (let i = 0; i < 4; i++) combined[i] = Math.round((raw[1] as number[])[i] ?? 0);
+    return { kind: 'ryuukyoku', deltas: combined };
   }
 
-  const detail = raw[2];
-  if (!Array.isArray(detail)) return { kind: 'ryuukyoku', deltas };
-  const winner = Number(detail[0]) as Seat;
-  const from = Number(detail[1]) as Seat;
-  const kind: EndKind = winner === from ? 'tsumo' : 'ron';
-  const scoreText = typeof detail[3] === 'string' ? detail[3] : undefined;
-  const yaku = parseYaku(detail.slice(4));
-  const winningTile = kind === 'tsumo' ? lastDrawOf(players[winner]) : lastDiscardOf(players[from]);
+  // Agari: one or more (deltas, detail) pairs — a pair per winning hand.
+  const pairs: { deltas: [number, number, number, number]; detail: unknown[] }[] = [];
+  for (let i = 1; i + 1 < raw.length; i += 2) {
+    const d = raw[i]; const det = raw[i + 1];
+    if (!Array.isArray(d) || !Array.isArray(det)) break;
+    const dd = [0, 0, 0, 0] as [number, number, number, number];
+    for (let j = 0; j < 4; j++) dd[j] = Math.round((d as number[])[j] ?? 0);
+    pairs.push({ deltas: dd, detail: det });
+  }
+  if (!pairs.length) return { kind: 'ryuukyoku', deltas: combined };
+  for (const p of pairs) for (let i = 0; i < 4; i++) combined[i] += p.deltas[i];
 
-  const res: KyokuResult = { kind, winner, deltas, winningTile, yaku, scoreText };
+  const from = Number(pairs[0].detail[1]) as Seat;
+  const kind: EndKind = (Number(pairs[0].detail[0]) as Seat) === from ? 'tsumo' : 'ron';
+  const agaris: Agari[] = pairs.map((p): Agari => {
+    const w = Number(p.detail[0]) as Seat;
+    const scoreText = typeof p.detail[3] === 'string' ? p.detail[3] : undefined;
+    const yaku = parseYaku(p.detail.slice(4));
+    const winningTile = kind === 'tsumo' ? lastDrawOf(players[w]) : lastDiscardOf(players[from]);
+    const a: Agari = { winner: w, winningTile, yaku, scoreText, deltas: p.deltas };
+    const fh = scoreText?.match(/(\d+)符(\d+)飜/);
+    if (fh) { a.fu = Number(fh[1]); a.han = Number(fh[2]); }
+    else if (yaku.length) a.han = yaku.reduce((s, y) => s + y.han, 0);
+    return a;
+  });
+
+  const primary = agaris[0];
+  const res: KyokuResult = {
+    kind, winner: primary.winner, winningTile: primary.winningTile,
+    deltas: combined, yaku: primary.yaku, scoreText: primary.scoreText, han: primary.han, fu: primary.fu,
+  };
   if (kind === 'ron') res.loser = from;
-  const fh = scoreText?.match(/(\d+)符(\d+)飜/);
-  if (fh) { res.fu = Number(fh[1]); res.han = Number(fh[2]); }
-  else if (yaku.length) res.han = yaku.reduce((a, y) => a + y.han, 0);
+  if (agaris.length > 1) res.wins = agaris;
   return res;
 }
 
@@ -148,12 +176,18 @@ function decodeKyoku(entry: unknown[], names: string[]): Kyoku {
   };
 }
 
-/** Pre-read just the deltas so per-player scoreDelta is available while decoding streams. */
+/** Pre-read just the deltas so per-player scoreDelta is available while decoding
+ *  streams. Sums every delta array (agari lists one per winning hand). */
 function decodeResultDeltas(raw: unknown): { deltas: [number, number, number, number] } {
   const deltas = [0, 0, 0, 0] as [number, number, number, number];
-  if (Array.isArray(raw) && Array.isArray(raw[1])) {
-    const d = raw[1] as number[];
-    for (let i = 0; i < 4; i++) deltas[i] = Math.round(d[i] ?? 0);
+  if (!Array.isArray(raw)) return { deltas };
+  if (String(raw[0] ?? '').includes('和')) {
+    for (let i = 1; i + 1 < raw.length; i += 2) {
+      const d = raw[i];
+      if (Array.isArray(d)) for (let j = 0; j < 4; j++) deltas[j] += Math.round((d as number[])[j] ?? 0);
+    }
+  } else if (Array.isArray(raw[1])) {
+    for (let j = 0; j < 4; j++) deltas[j] = Math.round((raw[1] as number[])[j] ?? 0);
   }
   return { deltas };
 }
