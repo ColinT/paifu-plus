@@ -4,3 +4,5 @@ dist-tsc/
 *.log
 .DS_Store
 scratch/
+public/*.pdf
+public/cmaps/

@@ -5,6 +5,9 @@
   "type": "module",
   "description": "Convert riichi mahjong paifun PDF records into tenhou.net/6 JSON, and create paifu manually.",
   "scripts": {
+    "copy-cmaps": "node scripts/copy-cmaps.mjs",
+    "predev": "node scripts/copy-cmaps.mjs",
+    "prebuild": "node scripts/copy-cmaps.mjs",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",

@@ -13,7 +13,12 @@ import { gameToTenhou } from '../src/core/tenhou.js';
 import type { Game, Kyoku } from '../src/core/model.js';
 
 const cmapDir = path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'cmaps') + path.sep;
-const md5 = (b: Uint8Array) => crypto.createHash('md5').update(b).digest('hex').slice(0, 10);
+const hashImage = (o: any): string => {
+  const d = o?.data;
+  if (!d) return '';
+  const b = d instanceof Uint8Array ? d : new Uint8Array(d.buffer ?? d);
+  return crypto.createHash('md5').update(b).digest('hex').slice(0, 10);
+};
 
 async function loadKyokus(file: string): Promise<Kyoku[]> {
   const data = new Uint8Array(fs.readFileSync(file));
@@ -21,7 +26,7 @@ async function loadKyokus(file: string): Promise<Kyoku[]> {
   const out: Kyoku[] = [];
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);
-    const raw = await extractPage(page as any, OPS as any, md5);
+    const raw = await extractPage(page as any, OPS as any, hashImage);
     try {
       out.push(parseKyoku(raw));
     } catch (e) {

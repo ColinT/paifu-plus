@@ -38,7 +38,14 @@ const mul = (m: Matrix, n: Matrix): Matrix => [
   m[1] * n[4] + m[3] * n[5] + m[5],
 ];
 
-export type Hasher = (bytes: Uint8Array) => string;
+/**
+ * Hash a pdfjs image object to the tile-table key. This is injected because the
+ * decoded image is delivered differently per environment: Node exposes raw RGB
+ * bytes in `o.data`, while the browser exposes an `ImageBitmap` in `o.bitmap`
+ * (o.data is null). Both must reduce to the SAME canonical RGB bytes so hashes
+ * match the table. Returns '' for an unresolved image.
+ */
+export type ImageHasher = (imageObj: any) => string;
 
 // Minimal shapes we rely on from pdfjs (avoids a hard type dependency here).
 interface PdfOps { fnArray: number[]; argsArray: any[][]; }
@@ -54,14 +61,7 @@ export interface OpsCodes {
   paintImageXObject: number; paintImageMaskXObject: number; paintJpegXObject: number;
 }
 
-function rawBytes(o: any): Uint8Array {
-  const d = o.data;
-  if (d instanceof Uint8Array) return d;
-  if (d && d.buffer) return new Uint8Array(d.buffer);
-  return new Uint8Array(d);
-}
-
-export async function extractPage(page: PdfPage, OPS: OpsCodes, hash: Hasher): Promise<RawPage> {
+export async function extractPage(page: PdfPage, OPS: OpsCodes, hashImage: ImageHasher): Promise<RawPage> {
   const vp = page.getViewport({ scale: 1 });
 
   const tc = await page.getTextContent();
@@ -96,7 +96,7 @@ export async function extractPage(page: PdfPage, OPS: OpsCodes, hash: Hasher): P
   for (const p of paints) {
     if (!hashByName.has(p.name)) {
       const o = await get(p.name);
-      hashByName.set(p.name, o ? hash(rawBytes(o)) : 'MISSING');
+      hashByName.set(p.name, o ? hashImage(o) : 'MISSING');
       landByName.set(p.name, o ? o.width > o.height : false);
     }
   }
