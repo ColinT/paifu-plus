@@ -39,7 +39,7 @@ button, input, select { font: inherit; color: inherit; }
 
 /* board: stations on the four sides, a central pond of rivers + melds */
 .board-wrap { display: flex; justify-content: center; }
-.board { display: grid; grid-template-columns: 1.1fr 2fr 1.1fr; grid-template-rows: 1fr 2.2fr 1fr; gap: 4px; width: 100%; max-width: 760px; aspect-ratio: 1 / 0.9; background: #14351f; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.board { display: grid; grid-template-columns: 1.1fr 2fr 1.1fr; grid-template-rows: 1fr 2.2fr 1fr; gap: 4px; width: 100%; max-width: 1100px; aspect-ratio: 1 / 0.92; background: #14351f; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
 .station { background: rgba(0,0,0,.18); border-radius: 6px; padding: 6px; display: flex; flex-direction: column; gap: 3px; overflow: hidden; align-self: center; }
 .station-top { grid-area: 1 / 2; } .station-bottom { grid-area: 3 / 2; }
 .station-left { grid-area: 2 / 1; } .station-right { grid-area: 2 / 3; }
@@ -59,7 +59,7 @@ button, input, select { font: inherit; color: inherit; }
 .river { display: grid; grid-template-columns: repeat(6, auto); gap: 1px; align-content: start; justify-content: center; }
 .riv-bottom { grid-area: 3 / 2; } .riv-top { grid-area: 1 / 2; transform: rotate(180deg); }
 .riv-right { grid-area: 2 / 3; transform: rotate(270deg); } .riv-left { grid-area: 2 / 1; transform: rotate(90deg); }
-.river .bt { font-size: 16px; }
+.river .bt { font-size: 32px; }
 .river .bt.tsumogiri { opacity: .45; }
 .river .bt.riichi { transform: rotate(90deg); }
 
@@ -67,9 +67,9 @@ button, input, select { font: inherit; color: inherit; }
 .melds-bottom { grid-area: 3 / 3; } .melds-top { grid-area: 1 / 1; transform: rotate(180deg); }
 .melds-right { grid-area: 1 / 3; transform: rotate(270deg); } .melds-left { grid-area: 3 / 1; transform: rotate(90deg); }
 .meld { display: inline-flex; gap: 1px; background: rgba(255,255,255,.08); border-radius: 3px; padding: 1px; }
-.meld .bt { font-size: 15px; } .meld .bt.called { transform: rotate(90deg); opacity: .95; }
+.meld .bt { font-size: 30px; } .meld .bt.called { transform: rotate(90deg); opacity: .95; }
 
-.bt { font-size: 18px; line-height: 1; }
+.bt { font-size: 36px; line-height: 1; }
 .bt.suit-m { color: var(--m); } .bt.suit-p { color: var(--p); } .bt.suit-s { color: var(--s); } .bt.suit-z { color: #e8eef6; }
 .bt.aka { color: var(--aka); }
 .board-empty { color: var(--muted); padding: 30px; }
