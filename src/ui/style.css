@@ -49,6 +49,10 @@ button, input, select { font: inherit; color: inherit; }
 .wind.dealer { outline: 2px solid #ffd66b; }
 .station .hand { display: flex; flex-wrap: nowrap; gap: 1px; }
 .station-left .hand, .station-right .hand { flex-direction: column; }
+/* rotate each seat's hand tiles to face that player (E upright, S 90° ccw, W 180°, N 90° cw) */
+.station-top .hand .bt { transform: rotate(180deg); }
+.station-right .hand .bt { transform: rotate(-90deg); }
+.station-left .hand .bt { transform: rotate(90deg); }
 
 .pond { grid-area: 2 / 2; display: grid; grid-template-columns: 1fr 1.3fr 1fr; grid-template-rows: 1fr 1.3fr 1fr; place-items: center; gap: 2px; }
 .pond-center { grid-area: 2 / 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center; }
