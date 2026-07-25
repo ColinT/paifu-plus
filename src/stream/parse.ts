@@ -130,6 +130,7 @@ export function parseStream(input: string): StreamParseResult {
   const isPhase = (p: Phase) => (phase as Phase) === p;
   const isExpect = (e: Expect) => (expect as Expect) === e;
   let lastDiscard: { seat: Seat; tile: TenhouTile } | null = null;
+  let lastDiscardTurn: Turn | null = null;
 
   const freshPlayers = (): PS[] => Array.from({ length: 4 }, () => ({ name: '', hand: [], haipai: [], turns: [], calls: [], riichi: false }));
 
@@ -204,6 +205,7 @@ export function parseStream(input: string): StreamParseResult {
     if (opts.riichi) { turnObj.riichi = true; p.riichi = true; sticks += 1; }
     if (tile !== null) removeFromHand(p, tile);
     lastDiscard = tile !== null ? { seat: playerSeat(p), tile } : null;
+    lastDiscardTurn = turnObj;
     expect = 'draw';
     turn = next(turn);
   }
@@ -239,6 +241,7 @@ export function parseStream(input: string): StreamParseResult {
     }
     if (caller === fromSeat) { warn(tok, 'a player cannot call their own discard'); return; }
     const cp = players[caller];
+    if (lastDiscardTurn) lastDiscardTurn.called = true; // the claimed discard leaves the river
     if (explicit && !isChi) ensureTiles(cp, tile, isKan ? 3 : 2, tok);
 
     if (isKan) {

@@ -39,6 +39,9 @@ describe('stream transcription DSL', () => {
     expect(north.calls.some((c) => c.type === 'pon' && c.calledTile === 12)).toBe(true);
     expect(north.haipai.filter((t) => t === 12).length).toBe(2); // backfilled two 2m
     expect(diagnostics.some((d) => /backfill/i.test(d.message))).toBe(true);
+    // East's discarded 2m was claimed → marked called.
+    const east = game.kyokus[0].players[0];
+    expect(east.turns.find((t) => t.discard === 12)?.called).toBe(true);
   });
 
   it('relative pon maps t/k/s to toimen/kamicha/shimocha of the caller', () => {

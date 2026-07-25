@@ -68,7 +68,12 @@ button, input, select { font: inherit; color: inherit; }
 .river { display: grid; grid-template-columns: repeat(6, auto); gap: 1px; align-content: start; justify-content: center; --h: 34px; }
 .riv-bottom { grid-area: 3 / 2; } .riv-top { grid-area: 1 / 2; transform: rotate(180deg); }
 .riv-right { grid-area: 2 / 3; transform: rotate(270deg); } .riv-left { grid-area: 2 / 1; transform: rotate(90deg); }
-.river .bt.tsumogiri { opacity: .5; }
+.river .bt { position: relative; }
+.river .bt.called { opacity: .32; }                         /* claimed discard — left the river */
+.river .bt.tsumogiri::after {                                /* tsumogiri marker — a dot above the tile */
+  content: ''; position: absolute; top: -5px; left: 50%; transform: translateX(-50%);
+  width: 5px; height: 5px; border-radius: 50%; background: #e8eef6;
+}
 .river .bt.riichi .tf { transform: rotate(90deg); }
 
 .melds { display: flex; gap: 3px; --h: 30px; }

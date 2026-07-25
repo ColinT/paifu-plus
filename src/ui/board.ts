@@ -29,7 +29,7 @@ function riverEl(p: PlayerHand, seat: number): HTMLElement {
   const r = el('div', { class: `river riv-${POS[seat]}` });
   for (const t of p.turns) {
     if (t.discard === undefined) continue;
-    const cls = (t.riichi ? 'riichi ' : '') + (t.tsumogiri ? 'tsumogiri' : '');
+    const cls = [t.riichi && 'riichi', t.tsumogiri && 'tsumogiri', t.called && 'called'].filter(Boolean).join(' ');
     r.append(miniTile(t.discard, cls));
   }
   return r;

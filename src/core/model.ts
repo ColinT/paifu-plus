@@ -40,6 +40,8 @@ export interface Turn {
   tsumogiri?: boolean;
   /** True if this discard is the riichi declaration tile. */
   riichi?: boolean;
+  /** True if this discard was claimed (pon/chi/kan) by another player. */
+  called?: boolean;
 }
 
 export interface PlayerHand {
