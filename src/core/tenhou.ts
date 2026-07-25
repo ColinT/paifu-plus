@@ -44,25 +44,28 @@ function relativeSeat(caller: Seat, from: Seat): number {
  */
 export function meldString(call: Call, callerSeat: Seat): string {
   const t = (x: TenhouTile) => String(x);
+  // Remove ONE copy of the called tile (a pon/kan is identical tiles, so
+  // filtering by value would wrongly drop them all).
+  const removeOne = (arr: TenhouTile[], val: TenhouTile): TenhouTile[] => {
+    const c = [...arr]; const i = c.indexOf(val); if (i >= 0) c.splice(i, 1); return c;
+  };
   switch (call.type) {
     case 'chi': {
       // Chi is always from kamicha; called tile listed first after 'c'.
       const called = call.calledTile!;
-      const others = call.tiles.filter((x) => x !== called);
+      const others = removeOne(call.tiles, called);
       return 'c' + t(called) + others.map(t).join('');
     }
     case 'pon': {
       const called = call.calledTile!;
-      const others = call.tiles.filter((x) => x !== called);
-      const parts = others.map(t);
+      const parts = removeOne(call.tiles, called).map(t);
       const idx = Math.max(0, relativeSeat(callerSeat, call.fromSeat!));
       parts.splice(idx, 0, 'p' + t(called));
       return parts.join('');
     }
     case 'daiminkan': {
       const called = call.calledTile!;
-      const others = call.tiles.filter((x) => x !== called);
-      const parts = others.map(t);
+      const parts = removeOne(call.tiles, called).map(t);
       const idx = relativeSeat(callerSeat, call.fromSeat!);
       parts.splice(idx === 2 ? 3 : Math.max(0, idx), 0, 'm' + t(called));
       return parts.join('');
@@ -70,8 +73,7 @@ export function meldString(call: Call, callerSeat: Seat): string {
     case 'kakan': {
       // Added kan: a 'k'+addedTile inserted into the existing pon shape.
       const added = call.calledTile!;
-      const others = call.tiles.filter((x) => x !== added);
-      const parts = others.map(t);
+      const parts = removeOne(call.tiles, added).map(t);
       const idx = Math.max(0, relativeSeat(callerSeat, call.fromSeat!));
       parts.splice(idx, 0, 'k' + t(added));
       return parts.join('');
