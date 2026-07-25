@@ -30,6 +30,13 @@ button, input, select { font: inherit; color: inherit; }
 .replay-slider { width: 100%; max-width: 760px; accent-color: var(--accent); }
 .replay-count { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 70px; text-align: center; }
 .replay-label { color: var(--fg); font-size: 13px; min-height: 18px; }
+.replay-buttons .spacer { flex: 1; }
+.comments { width: 100%; max-width: 760px; display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.comment { display: flex; align-items: center; gap: 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+.comment-text { flex: 1; font-size: 13px; }
+.comment-add { display: flex; gap: 6px; }
+.comment-input { flex: 1; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; color: var(--fg); }
+.comment-input:focus { outline: none; border-color: var(--accent); }
 
 .stream-panel { display: flex; flex-direction: column; gap: 8px; }
 .stream-input { width: 100%; min-height: 120px; resize: vertical; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; color: var(--fg); font: 14px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace; letter-spacing: .3px; }

@@ -7,8 +7,13 @@ import type { BoardView } from './board.js';
 import { roundName } from './state.js';
 import { tileLabel } from '../core/tileDisplay.js';
 import { el, clear } from './dom.js';
+import { logId, loadComments, saveComments, shareUrl } from './share.js';
+import type { Comment, SharePayload } from './share.js';
 
-interface ReplayState { game: ReplayGame | null; ky: number; step: number; playing: boolean; }
+interface ReplayState {
+  game: ReplayGame | null; ky: number; step: number; playing: boolean;
+  log: unknown; id: string; comments: Comment[];
+}
 
 function resultTextFromLog(result: any): string | undefined {
   if (!Array.isArray(result)) return undefined;
@@ -42,7 +47,7 @@ function stepLabel(g: ReplayGame, step: Step): string {
 }
 
 export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any }) {
-  const state: ReplayState = { game: null, ky: 0, step: 0, playing: false };
+  const state: ReplayState = { game: null, ky: 0, step: 0, playing: false, log: null, id: '', comments: [] };
   let timer: number | undefined;
 
   const input = el('textarea', { class: 'stream-input', spellcheck: 'false', placeholder: 'Paste a tenhou/6 JSON log here, or use “Load from editor”.' }) as HTMLTextAreaElement;
@@ -59,12 +64,40 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any }
 
   root.append(inputPanel, view);
 
+  function loadLog(log: any, extraComments?: Comment[]) {
+    if (!log || !Array.isArray(log.log)) { alert('Not a tenhou/6 log (missing "log" array).'); return; }
+    try { state.game = buildReplay(log); } catch (e) { alert('Could not replay: ' + (e as Error).message); return; }
+    state.log = log; state.id = logId(log);
+    state.comments = loadComments(state.id);
+    // merge any comments arriving from a shared link (dedup by ky/step/text)
+    for (const c of extraComments ?? []) {
+      if (!state.comments.some((x) => x.ky === c.ky && x.step === c.step && x.text === c.text)) state.comments.push(c);
+    }
+    if (extraComments?.length) saveComments(state.id, state.comments);
+    state.ky = 0; state.step = 0; stop(); render();
+  }
   function loadText(text: string) {
     let log: any;
     try { log = JSON.parse(text); } catch { alert('Not valid JSON.'); return; }
-    if (!log || !Array.isArray(log.log)) { alert('Not a tenhou/6 log (missing "log" array).'); return; }
-    try { state.game = buildReplay(log); } catch (e) { alert('Could not replay: ' + (e as Error).message); return; }
-    state.ky = 0; state.step = 0; stop(); render();
+    loadLog(log);
+  }
+  function loadShared(payload: SharePayload) { loadLog(payload.log, payload.comments); }
+
+  const commentsAt = (ky: number, step: number) => state.comments.filter((c) => c.ky === ky && c.step === step);
+  function addComment(text: string) {
+    if (!text.trim()) return;
+    state.comments.push({ ky: state.ky, step: state.step, text: text.trim() });
+    saveComments(state.id, state.comments);
+    render();
+  }
+  function removeComment(c: Comment) {
+    const i = state.comments.indexOf(c); if (i >= 0) state.comments.splice(i, 1);
+    saveComments(state.id, state.comments); render();
+  }
+  function gotoComment(dir: 1 | -1) {
+    const marks = state.comments.filter((c) => c.ky === state.ky).map((c) => c.step).sort((a, b) => a - b);
+    const target = dir > 0 ? marks.find((s) => s > state.step) : [...marks].reverse().find((s) => s < state.step);
+    if (target !== undefined) { state.step = target; stop(); render(); }
   }
 
   function curKyoku(): KyokuReplay | undefined { return state.game?.kyokus[state.ky]; }
@@ -87,6 +120,7 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any }
   function renderControls(k: KyokuReplay) {
     clear(controls);
     const slider = el('input', { type: 'range', min: '0', max: String(k.steps.length - 1), value: String(state.step), class: 'replay-slider', onInput: (e: Event) => { state.step = Number((e.target as HTMLInputElement).value); stop(); render(); } });
+    const commentCount = state.comments.filter((c) => c.ky === state.ky).length;
     controls.append(
       el('div', { class: 'replay-buttons' }, [
         el('button', { class: 'btn', title: 'Start', onClick: () => { state.step = 0; stop(); render(); } }, ['⏮']),
@@ -95,11 +129,34 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any }
         el('button', { class: 'btn', title: 'Next', onClick: () => step(1) }, ['▶▎']),
         el('button', { class: 'btn', title: 'End', onClick: () => { state.step = k.steps.length - 1; stop(); render(); } }, ['⏭']),
         el('span', { class: 'replay-count' }, [`${state.step + 1} / ${k.steps.length}`]),
+        el('span', { class: 'spacer' }),
+        el('button', { class: 'btn', title: 'Previous comment', onClick: () => gotoComment(-1) }, ['💬◀']),
+        el('button', { class: 'btn', title: 'Next comment', onClick: () => gotoComment(1) }, [`💬▶${commentCount ? ` ${commentCount}` : ''}`]),
+        el('button', { class: 'btn', title: 'Copy a shareable link (log + comments)', onClick: copyShareLink }, ['🔗 Share']),
       ]),
       slider,
       el('div', { class: 'replay-label' }, [stepLabel(state.game!, k.steps[state.step])]),
+      renderComments(),
     );
   }
+
+  function renderComments(): HTMLElement {
+    const box = el('div', { class: 'comments' });
+    const here = commentsAt(state.ky, state.step);
+    for (const c of here) {
+      box.append(el('div', { class: 'comment' }, [el('span', { class: 'comment-text' }, [c.text]), el('button', { class: 'mini danger', title: 'Delete', onClick: () => removeComment(c) }, ['×'])]));
+    }
+    const inp = el('input', { class: 'comment-input', placeholder: 'Add a comment at this move…', onKeydown: (e: KeyboardEvent) => { if (e.key === 'Enter') { addComment((e.target as HTMLInputElement).value); } } }) as HTMLInputElement;
+    box.append(el('div', { class: 'comment-add' }, [inp, el('button', { class: 'btn small', onClick: () => addComment(inp.value) }, ['Add'])]));
+    return box;
+  }
+
+  async function copyShareLink() {
+    const url = shareUrl({ log: state.log, comments: state.comments });
+    try { await navigator.clipboard.writeText(url); flash('Share link copied'); }
+    catch { prompt('Copy this share link:', url); }
+  }
+  function flash(msg: string) { const f = el('div', { class: 'flash' }, [msg]); document.body.append(f); setTimeout(() => f.remove(), 1600); }
 
   function step(delta: number) {
     const k = curKyoku(); if (!k) return;
@@ -111,5 +168,5 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any }
   function stop() { state.playing = false; if (timer) { clearInterval(timer); timer = undefined; } }
 
   render();
-  return { load: loadText };
+  return { load: loadText, loadShared };
 }

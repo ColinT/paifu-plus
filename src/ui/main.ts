@@ -8,6 +8,7 @@ import type { EditorState } from './state.js';
 import { renderKyoku } from './editor.js';
 import { renderBoard } from './board.js';
 import { mountReplay } from './replay.js';
+import { readShareFromUrl } from './share.js';
 import { el, clear } from './dom.js';
 
 const state: EditorState & { streamText: string } = { game: newGame(), activeKyoku: 0, streamText: '' };
@@ -26,8 +27,12 @@ function setMode(m: 'editor' | 'replay') {
   replayEl.style.display = m === 'replay' ? 'block' : 'none';
   renderToolbar();
 }
-mountReplay(replayEl, { getEditorLog: () => gameToTenhou(state.game) });
+const replay = mountReplay(replayEl, { getEditorLog: () => gameToTenhou(state.game) });
 replayEl.style.display = 'none';
+
+// A shared link (#replay=...) opens straight into the replayer.
+const shared = readShareFromUrl();
+if (shared) { setMode('replay'); replay.loadShared(shared); }
 
 function panel(title: string, key: string, body: HTMLElement, opts: { collapsed?: boolean; grow?: boolean } = {}): HTMLElement {
   const sec = el('section', { class: `panel${opts.collapsed ? ' collapsed' : ''}${opts.grow ? ' grow' : ''}`, 'data-key': key });
