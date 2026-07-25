@@ -54,14 +54,13 @@ function groupLines(texts: RawText[], tol = 3): Line[] {
 
 // ---------- tile row helpers ----------
 
-interface TileCell { x: number; tile: TenhouTile | null; arrow: boolean; blank: boolean; landscape: boolean; hash: string; }
+interface TileCell { x: number; tile: TenhouTile | null; arrow: boolean; landscape: boolean; hash: string; }
 
 function toCell(t: RawTile): TileCell {
   const k = classifyHash(t.hash);
-  if (k.kind === 'arrow') return { x: t.x, tile: null, arrow: true, blank: false, landscape: false, hash: t.hash };
-  if (k.kind === 'blank') return { x: t.x, tile: null, arrow: false, blank: true, landscape: false, hash: t.hash };
-  if (k.kind === 'tile') return { x: t.x, tile: k.tile, arrow: false, blank: false, landscape: k.landscape || t.landscape, hash: t.hash };
-  return { x: t.x, tile: null, arrow: false, blank: false, landscape: t.landscape, hash: t.hash }; // unknown
+  if (k.kind === 'arrow') return { x: t.x, tile: null, arrow: true, landscape: false, hash: t.hash };
+  if (k.kind === 'tile') return { x: t.x, tile: k.tile, arrow: false, landscape: k.landscape || t.landscape, hash: t.hash };
+  return { x: t.x, tile: null, arrow: false, landscape: t.landscape, hash: t.hash }; // unknown
 }
 
 function clusterRows(tiles: RawTile[], tol = 6): { y: number; cells: TileCell[] }[] {
@@ -162,14 +161,20 @@ export function parseKyoku(page: RawPage, opts: ParseOptions = {}): Kyoku {
     const [lo, hi] = bandRange(k);
     const inBand = (y: number) => y > lo && y < hi;
 
+    // Row labels live in the left header column (small x); win/call markers sit
+    // over the tiles (larger x). Separating them by x is what keeps the ツモ row
+    // label from being confused with the ツモ win marker, etc.
+    const LEFT_LABEL_X = 100;
+    const labelItems = page.texts.filter((t) => inBand(t.y) && t.x < LEFT_LABEL_X);
+    const markerItems = page.texts.filter((t) => inBand(t.y) && t.x >= LEFT_LABEL_X);
     const labelY = (needle: RegExp): number | null => {
-      const l = lines.filter((l) => inBand(l.y) && needle.test(l.text.replace(/\s/g, ''))).sort((a, b) => b.y - a.y)[0];
-      return l ? l.y : null;
+      const it = labelItems.filter((t) => needle.test(t.str.replace(/\s/g, ''))).sort((a, b) => b.y - a.y)[0];
+      return it ? it.y : null;
     };
-    const yHaipai = labelY(/配牌/);
-    const yTsumo = labelY(/^ツモ|ツモ$/);
-    const ySutehai = labelY(/捨牌/);
-    const yFinal = labelY(/最終形/);
+    const yHaipai = labelY(/配/);
+    const yTsumo = labelY(/ツ/);
+    const ySutehai = labelY(/捨/);
+    const yFinal = labelY(/最/);
 
     const bandRows = allRows.filter((r) => inBand(r.y));
     const nearest = (ly: number | null) => {
@@ -189,60 +194,48 @@ export function parseKyoku(page: RawPage, opts: ParseOptions = {}): Kyoku {
     const tsumoCells = (tsumoRow?.cells ?? []);
     const sutehaiCells = (sutehaiRow?.cells ?? []).filter((c) => c.tile !== null);
 
-    // Reconstruct turns by pairing ツモ[i] with 捨牌[i].
+    // Draw stream: for a 14-tile dealer haipai, the extra tile is the first draw
+    // (shown merged into the opening hand); prepend it and keep 13 as haipai.
+    let haipai = haipaiTiles.map((c) => c.tile!) as TenhouTile[];
+    const drawCells: { tile: TenhouTile | null; arrow: boolean }[] = [];
+    if (haipai.length === 14) {
+      drawCells.push({ tile: haipai[13], arrow: false }); // best-effort; user can correct in editor
+      haipai = haipai.slice(0, 13);
+    }
+    for (const c of tsumoCells) drawCells.push({ tile: c.tile, arrow: c.arrow });
+
+    // Pair draw[i] with discard[i]. An arrow draw = tsumogiri (drew & threw same).
     const turns: Turn[] = [];
-    const n = Math.max(tsumoCells.length, sutehaiCells.length);
+    const n = Math.max(drawCells.length, sutehaiCells.length);
     for (let i = 0; i < n; i++) {
-      const ts = tsumoCells[i];
+      const dc = drawCells[i];
       const sd = sutehaiCells[i];
       if (sd) {
-        if (ts && ts.arrow) turns.push({ draw: sd.tile!, discard: sd.tile!, tsumogiri: true });
-        else if (ts && ts.tile !== null) turns.push({ draw: ts.tile, discard: sd.tile! });
-        else turns.push({ discard: sd.tile! }); // called turn (no wall draw) — draw filled by call handling
-      } else if (ts && ts.tile !== null) {
-        turns.push({ draw: ts.tile }); // winning tsumo draw, no discard
+        if (dc && dc.arrow) turns.push({ draw: sd.tile!, discard: sd.tile!, tsumogiri: true });
+        else if (dc && dc.tile !== null) turns.push({ draw: dc.tile, discard: sd.tile! });
+        else turns.push({ discard: sd.tile! }); // called turn (no wall draw)
+      } else if (dc && dc.tile !== null) {
+        turns.push({ draw: dc.tile }); // winning tsumo draw, no discard
       }
     }
 
-    // Dealer opening: some sources show 14-tile haipai (13 + first draw). Split.
-    let haipai = haipaiTiles.map((c) => c.tile!) as TenhouTile[];
-    if (haipai.length === 14) {
-      const firstDraw = haipai[13];
-      haipai = haipai.slice(0, 13);
-      turns.unshift({ draw: firstDraw, discard: turns[0]?.discard, tsumogiri: turns[0]?.tsumogiri });
-      if (turns.length > 1) turns.splice(1, 1); // the split shifted the first pairing
-    }
-
-    // Markers within this band, matched by x to a tile in the sutehai row.
-    const bandTexts = page.texts.filter((t) => inBand(t.y));
-    const markAt = (needle: RegExp, row?: { cells: TileCell[] }): number | undefined => {
-      const mt = bandTexts.find((t) => needle.test(t.str));
-      if (!mt || !row) return undefined;
+    // riichi: ﾘｰﾁ marker aligned by x to a discard tile.
+    const riichiMark = markerItems.find((t) => /ﾘｰﾁ|リーチ/.test(t.str));
+    if (riichiMark && sutehaiCells.length) {
       let best = { d: Infinity, i: -1 };
-      row.cells.forEach((c, i) => { const d = Math.abs(c.x - mt.x); if (d < best.d) best = { d, i }; });
-      return best.i >= 0 ? best.i : undefined;
-    };
-
-    // riichi: ﾘｰﾁ over a discard.
-    const riichiIdx = markAt(/ﾘｰﾁ|リーチ/, sutehaiRow ? { cells: sutehaiCells } : undefined);
-    if (riichiIdx !== undefined && turns[riichiIdx]) { turns[riichiIdx].riichi = true; riichiSeat = band.seat; }
-
-    // win markers.
-    const hasRon = bandTexts.some((t) => /ロン/.test(t.str));
-    const hasTsumoWin = bandTexts.some((t) => /ツモ/.test(t.str) && t.y < (yTsumo ?? -Infinity) - 20); // ツモ near 最終形, not the row label
-    const hasFurikomi = bandTexts.some((t) => /ﾌﾘｺﾐ|フリコミ/.test(t.str));
-    if (hasRon) seatWinner.push({ seat: band.seat, kind: 'ron' });
-    if (hasTsumoWin) seatWinner.push({ seat: band.seat, kind: 'tsumo' });
-    if (hasFurikomi) loserSeat = band.seat;
-
-    // winning tile via ロン/ツモ marker over the final row.
-    if (hasRon || hasTsumoWin) {
-      const wi = markAt(/ロン|ツモ/, finalRow);
-      if (wi !== undefined && finalRow) winTile = finalRow.cells[wi]?.tile ?? undefined;
+      sutehaiCells.forEach((c, i) => { const d = Math.abs(c.x - riichiMark.x); if (d < best.d) best = { d, i }; });
+      if (best.i >= 0 && turns[best.i]) { turns[best.i].riichi = true; riichiSeat = band.seat; }
     }
+
+    // Win / deal-in markers (over the tiles, x >= LEFT_LABEL_X).
+    const hasRon = markerItems.some((t) => /ロン/.test(t.str));
+    const hasTsumoWin = markerItems.some((t) => /ツモ/.test(t.str));
+    if (hasRon) seatWinner.push({ seat: band.seat, kind: 'ron' });
+    else if (hasTsumoWin) seatWinner.push({ seat: band.seat, kind: 'tsumo' });
+    if (markerItems.some((t) => /ﾌﾘｺﾐ|フリコミ/.test(t.str))) loserSeat = band.seat;
 
     // Calls: landscape tiles in the final row (chi/pon/minkan) and 4-of-a-kind (ankan).
-    const calls = detectCalls(finalRow?.cells ?? [], bandTexts);
+    const calls = detectCalls(finalRow?.cells ?? [], markerItems);
 
     players.push({
       seat: band.seat,
@@ -256,11 +249,21 @@ export function parseKyoku(page: RawPage, opts: ParseOptions = {}): Kyoku {
     });
   }
 
-  // Result.
+  // Result. The winning tile is derived from the reconstructed streams (robust)
+  // rather than from marker alignment: tsumo = winner's last draw; ron = the
+  // deal-in player's last discard (its actual tile, even if tsumogiri).
   const win = seatWinner[0];
   let result: KyokuResult;
   const deltas = orderByFixed(players, round, (p) => p.scoreDelta) as [number, number, number, number];
   if (win) {
+    if (win.kind === 'tsumo') {
+      const wp = players.find((p) => p.seat === win.seat);
+      winTile = wp?.turns[wp.turns.length - 1]?.draw;
+    } else {
+      const lp = loserSeat != null ? players.find((p) => p.seat === loserSeat) : undefined;
+      const last = lp?.turns[lp.turns.length - 1];
+      winTile = last ? (last.tsumogiri ? last.draw : last.discard) : undefined;
+    }
     result = { kind: win.kind, winner: fixedIndex(win.seat, round), loser: loserSeat != null ? fixedIndex(loserSeat, round) : undefined, winningTile: winTile, deltas };
   } else {
     result = { kind: 'ryuukyoku', deltas };

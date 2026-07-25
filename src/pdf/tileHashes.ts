@@ -16,9 +16,11 @@
 
 import type { TenhouTile } from '../core/tiles.js';
 
-/** Special non-tile glyphs found in the tile rows. */
+/** Special non-tile glyph found in the ツモ rows. */
 export const ARROW_HASH = '72f6445067'; // ↓ tsumogiri marker (in ツモ rows)
-export const BLANK_HASH = 'e169ea36ab'; // empty spacer tile
+
+// NOTE: e169ea36ab is 白 (haku / white dragon), which this tileset renders as a
+// blank-framed tile — NOT a spacer. It maps to 45 in PORTRAIT_TILE below.
 
 /**
  * AKA (red five) note: two distinct 5m glyphs exist (伍萬 `f57dd0196d`,
@@ -40,9 +42,9 @@ export const PORTRAIT_TILE: Record<string, TenhouTile> = {
   'dc1046fb00': 31, '39744bbbbc': 32, '76227a4ace': 33, '9472c85b35': 34,
   '2f69759175': 35, 'bf842de9c2': 36, 'd47e660b2f': 37, '20d8a4cc2c': 38,
   'f72b43f932': 39,
-  // honors
+  // honors (白 haku is drawn as a blank-framed tile; 發 hatsu not seen in samples)
   'b5cf7d046c': 41, '1d42bff19c': 42, 'fff3043152': 43, 'd14217155f': 44,
-  '26a4dc27eb': 47,
+  'e169ea36ab': 45, '26a4dc27eb': 47,
 };
 
 /**
@@ -59,13 +61,11 @@ export const LANDSCAPE_TILE: Record<string, TenhouTile> = {
 export type TileKind =
   | { kind: 'tile'; tile: TenhouTile; landscape: boolean }
   | { kind: 'arrow' }
-  | { kind: 'blank' }
   | { kind: 'unknown'; hash: string };
 
 /** Classify a tile image by its content hash. */
 export function classifyHash(hash: string): TileKind {
   if (hash === ARROW_HASH) return { kind: 'arrow' };
-  if (hash === BLANK_HASH) return { kind: 'blank' };
   if (hash in PORTRAIT_TILE) return { kind: 'tile', tile: PORTRAIT_TILE[hash], landscape: false };
   if (hash in LANDSCAPE_TILE) return { kind: 'tile', tile: LANDSCAPE_TILE[hash], landscape: true };
   return { kind: 'unknown', hash };
