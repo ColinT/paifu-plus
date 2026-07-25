@@ -293,6 +293,9 @@ export function parseStream(input: string): StreamParseResult {
     if (um) { ura.push(...parseTileNotation(um[2])); continue; }
 
     if (isPhase('haipai')) {
+      const advance = () => { haipaiSeat++; if (haipaiSeat === 4) { phase = 'play'; turn = 0; expect = 'discard'; midTurnSeat = 0; } };
+      // '?' skips this seat's haipai (unknown — reconstructed later from calls).
+      if (t === '?') { missing++; warn(tok, `${['E', 'S', 'W', 'N'][haipaiSeat]} haipai skipped`, 'info'); advance(); continue; }
       // name-prefixed haipai?  name:tiles
       const colon = t.indexOf(':');
       const name = colon >= 0 ? t.slice(0, colon) : '';
@@ -306,8 +309,7 @@ export function parseStream(input: string): StreamParseResult {
       // Dealer: fold the 14th tile in as the first draw.
       if (haipaiSeat === 0 && tiles.length >= 14) { const first = p.hand.pop()!; p.haipai = p.hand.slice(); p.turns.push({ draw: first }); }
       else p.haipai = p.hand.slice();
-      haipaiSeat++;
-      if (haipaiSeat === 4) { phase = 'play'; turn = 0; expect = 'discard'; midTurnSeat = 0; }
+      advance();
       continue;
     }
 

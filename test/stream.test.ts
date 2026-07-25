@@ -53,6 +53,19 @@ describe('stream transcription DSL', () => {
     expect(mk('s')).toBe(3); // shimocha-pon: caller is East's kamicha = North
   });
 
+  it('? in the haipai phase skips that seat (does not consume the next token)', () => {
+    // East has a partial known haipai; S/W/N skipped; 2z is East's first discard.
+    const { game, diagnostics } = parseStream('e1 d7p 5567m ? ? ? 2z');
+    const k = game.kyokus[0];
+    expect(k.players[0].haipai).toEqual([15, 15, 16, 17]); // 5m5m6m7m
+    expect(k.players[1].haipai).toEqual([]);               // South skipped
+    expect(k.players[2].haipai).toEqual([]);
+    expect(k.players[3].haipai).toEqual([]);
+    // 2z is East's first discard, not South's haipai
+    expect(k.players[0].turns.at(-1)?.discard).toBe(42);   // 2z = South wind (42)
+    expect(diagnostics.filter((d) => /haipai skipped/.test(d.message))).toHaveLength(3);
+  });
+
   it('flags ? as missing but keeps parsing', () => {
     const s = 'e1 1112345678999m 123456789p1234z5z 123456789s1234z5z 123456789p1234z5z 1z ? 8p ryuukyoku';
     const { missing, diagnostics } = parseStream(s);
