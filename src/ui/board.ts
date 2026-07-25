@@ -35,11 +35,29 @@ function riverEl(p: PlayerHand, seat: number): HTMLElement {
   return r;
 }
 
+/** Position of the rotated (called) tile within a meld: the discarder's seat
+ *  relative to the caller — kamicha→left, toimen→middle, shimocha→right(end). */
+function calledPosition(seat: number, fromSeat: number, n: number): number {
+  const d = ((fromSeat - seat) + 4) % 4;
+  if (d === 3) return 0;   // kamicha (left)
+  if (d === 2) return 1;   // toimen (middle)
+  return n - 1;            // shimocha (right end)
+}
+
 function meldsEl(p: PlayerHand, seat: number): HTMLElement {
   const m = el('div', { class: `melds melds-${POS[seat]}` });
   for (const c of p.calls) {
-    m.append(el('span', { class: 'meld', title: c.type },
-      c.tiles.map((t, i) => miniTile(t, c.calledTile !== undefined && t === c.calledTile && i === 0 ? 'called' : ''))));
+    let cells: { t: TenhouTile; called: boolean }[] = c.tiles.map((t) => ({ t, called: false }));
+    if (c.calledTile !== undefined && c.fromSeat !== undefined) {
+      const pos = calledPosition(seat, c.fromSeat, c.tiles.length);
+      const others = [...c.tiles];
+      const ci = others.indexOf(c.calledTile);
+      if (ci >= 0) others.splice(ci, 1);
+      cells = [];
+      let oi = 0;
+      for (let k = 0; k < c.tiles.length; k++) cells.push(k === pos ? { t: c.calledTile, called: true } : { t: others[oi++], called: false });
+    }
+    m.append(el('span', { class: 'meld', title: c.type }, cells.map((o) => miniTile(o.t, o.called ? 'called' : ''))));
   }
   return m;
 }

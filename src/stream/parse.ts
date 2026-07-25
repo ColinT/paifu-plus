@@ -125,6 +125,7 @@ export function parseStream(input: string): StreamParseResult {
   let players: PS[] | null = null;
   let phase: Phase = 'need-round';
   let haipaiSeat = 0;
+  let pendingName = '';
   let turn: Seat = 0;
   let expect: Expect = 'discard';
   const isPhase = (p: Phase) => (phase as Phase) === p;
@@ -178,7 +179,7 @@ export function parseStream(input: string): StreamParseResult {
     sticks = rest[2] ? parseInt(rest[2], 10) : 0;
     startSticks = sticks;
     dora = []; ura = []; players = freshPlayers();
-    phase = 'haipai'; haipaiSeat = 0; turn = 0; expect = 'discard'; lastDiscard = null;
+    phase = 'haipai'; haipaiSeat = 0; pendingName = ''; turn = 0; expect = 'discard'; lastDiscard = null;
   }
 
   function doDraw(p: PS, tok: Tok, tile: TenhouTile | null) {
@@ -296,17 +297,18 @@ export function parseStream(input: string): StreamParseResult {
     if (um) { ura.push(...parseTileNotation(um[2])); continue; }
 
     if (isPhase('haipai')) {
-      const advance = () => { haipaiSeat++; if (haipaiSeat === 4) { phase = 'play'; turn = 0; expect = 'discard'; midTurnSeat = 0; } };
+      const advance = () => { pendingName = ''; haipaiSeat++; if (haipaiSeat === 4) { phase = 'play'; turn = 0; expect = 'discard'; midTurnSeat = 0; } };
       // '?' skips this seat's haipai (unknown — reconstructed later from calls).
       if (t === '?') { missing++; warn(tok, `${['E', 'S', 'W', 'N'][haipaiSeat]} haipai skipped`, 'info'); advance(); continue; }
-      // name-prefixed haipai?  name:tiles
+      // A player name may be attached as "name:tiles" or as a separate token
+      // before the haipai (e.g. "Okada 996p...").
       const colon = t.indexOf(':');
       const name = colon >= 0 ? t.slice(0, colon) : '';
       const body = colon >= 0 ? t.slice(colon + 1) : t;
       const tiles = parseTileNotation(body);
-      if (!tiles.length) { warn(tok, 'expected haipai tiles'); continue; }
+      if (!tiles.length) { pendingName = t; continue; } // a non-tile token = the name
       const p = players![haipaiSeat];
-      p.name = name; p.hand = tiles.slice();
+      p.name = name || pendingName; p.hand = tiles.slice();
       const expected = haipaiSeat === 0 ? 14 : 13;
       if (tiles.length !== expected) warn(tok, `${['E', 'S', 'W', 'N'][haipaiSeat]} haipai has ${tiles.length} tiles (expected ${expected})`);
       // Dealer: fold the 14th tile in as the first draw.

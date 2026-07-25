@@ -15,6 +15,12 @@ describe('stream transcription DSL', () => {
     expect(k.result.kind).toBe('ryuukyoku');
   });
 
+  it('parses space-separated player names (name then haipai)', () => {
+    const s = 'e1 Okada 123456789m1234z1z Asakura 123456789p1234z Sekiguchi 123456789s1234z Mizukoshi 123456789p1234z 1z ryuukyoku';
+    const g = parseStream(s).game.kyokus[0];
+    expect(g.players.map((p) => p.name)).toEqual(['Okada', 'Asakura', 'Sekiguchi', 'Mizukoshi']);
+  });
+
   it('flexible round syntax e1 / E1 / e1-0 all mean East-1', () => {
     for (const r of ['e1', 'E1', 'e1-0', 'e1.0.0']) {
       const { game } = parseStream(`${r} 1m 2m3m4m5m6m7m8m9m1z2z3z4z5z 1p2p3p4p5p6p7p8p9p1s2s3s4s 1s2s3s4s5s6s7s8s9s1p2p3p4p 1z2z3z4z5z6z7z1m2m3m4m5m6m ryuukyoku`);

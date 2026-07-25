@@ -65,7 +65,7 @@ button, input, select { font: inherit; color: inherit; }
 .bc-result { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(0,0,0,.3); max-width: 150px; }
 .bc-result.tsumo, .bc-result.ron { color: #ffd66b; }
 
-.river { display: grid; grid-template-columns: repeat(6, auto); gap: 1px; align-content: start; justify-content: center; --h: 34px; }
+.river { display: grid; grid-template-columns: repeat(6, auto); gap: 7px 1px; align-content: start; justify-content: center; --h: 34px; }
 .riv-bottom { grid-area: 3 / 2; } .riv-top { grid-area: 1 / 2; transform: rotate(180deg); }
 .riv-right { grid-area: 2 / 3; transform: rotate(270deg); } .riv-left { grid-area: 2 / 1; transform: rotate(90deg); }
 .river .bt { position: relative; }
