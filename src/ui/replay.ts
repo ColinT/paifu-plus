@@ -120,7 +120,7 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
 
     clear(tabs);
     state.game.kyokus.forEach((k, i) => tabs.append(el('button', { class: `tab${i === state.ky ? ' active' : ''}`, onClick: () => { state.ky = i; state.step = 0; stop(); render(); } }, [`${roundName(k.round)}${k.honba ? `-${k.honba}` : ''}`])));
-    tabs.append(el('button', { class: 'tab', onClick: () => { state.game = null; render(); } }, ['↺ new log']));
+    tabs.append(el('button', { class: 'tab has-icon', onClick: () => { state.game = null; render(); } }, [icon('refresh'), 'new log']));
 
     const k = curKyoku()!;
     state.step = Math.max(0, Math.min(state.step, k.steps.length - 1));

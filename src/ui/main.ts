@@ -12,6 +12,7 @@ import { renderBoard } from './board.js';
 import { mountReplay } from './replay.js';
 import { readShareFromUrl } from './share.js';
 import { el, clear } from './dom.js';
+import { icon } from './icon.js';
 
 const state: EditorState & { streamText: string } = { game: newGame(), activeKyoku: 0, streamText: '' };
 
@@ -105,16 +106,16 @@ function renderToolbar() {
   toolbarEl.append(
     el('span', { class: 'brand' }, ['牌譜 → tenhou']),
     el('div', { class: 'mode-toggle' }, [
-      el('button', { class: `btn${mode === 'editor' ? ' primary' : ''}`, onClick: () => setMode('editor') }, ['Editor']),
-      el('button', { class: `btn${mode === 'replay' ? ' primary' : ''}`, onClick: () => setMode('replay') }, ['Replay']),
+      el('button', { class: `btn has-icon${mode === 'editor' ? ' primary' : ''}`, onClick: () => setMode('editor') }, [icon('edit'), 'Editor']),
+      el('button', { class: `btn has-icon${mode === 'replay' ? ' primary' : ''}`, onClick: () => setMode('replay') }, [icon('play_circle'), 'Replay']),
     ]),
-    el('button', { class: 'btn primary', onClick: () => fileInput.click() }, ['Import PAIFUN PDF']),
+    el('button', { class: 'btn has-icon primary', onClick: () => fileInput.click() }, [icon('upload_file'), 'Import PAIFUN PDF']),
     fileInput,
-    el('button', { class: 'btn', onClick: () => { if (confirm('Start a new empty game? Unsaved edits will be lost.')) { state.game = newGame(); state.activeKyoku = 0; state.streamText = ''; streamInput.value = ''; renderAll(); } } }, ['New game']),
+    el('button', { class: 'btn has-icon', onClick: () => { if (confirm('Start a new empty game? Unsaved edits will be lost.')) { state.game = newGame(); state.activeKyoku = 0; state.streamText = ''; streamInput.value = ''; renderAll(); } } }, [icon('note_add'), 'New game']),
     el('span', { class: 'spacer' }),
-    el('button', { class: 'btn', onClick: copyJson }, ['Copy JSON']),
-    el('button', { class: 'btn primary', onClick: downloadJson }, ['Download .json']),
-    el('a', { class: 'btn link', href: 'https://tenhou.net/6/', target: '_blank', rel: 'noopener', title: 'Open the tenhou viewer, then drag the downloaded file in' }, ['Tenhou viewer ↗']),
+    el('button', { class: 'btn has-icon', onClick: copyJson }, [icon('content_copy'), 'Copy JSON']),
+    el('button', { class: 'btn has-icon primary', onClick: downloadJson }, [icon('download'), 'Download .json']),
+    el('a', { class: 'btn link has-icon', href: 'https://tenhou.net/6/', target: '_blank', rel: 'noopener', title: 'Open the tenhou viewer, then drag the downloaded file in' }, ['Tenhou viewer', icon('open_in_new')]),
   );
 }
 
@@ -135,8 +136,8 @@ function renderTabs() {
   state.game.kyokus.forEach((k, i) => {
     tabsEl.append(el('button', { class: `tab${i === state.activeKyoku ? ' active' : ''}`, onClick: () => { state.activeKyoku = i; renderAll(); } }, [`${roundName(k.round)}${k.honba ? `-${k.honba}` : ''}`]));
   });
-  tabsEl.append(el('button', { class: 'tab add', title: 'Add kyoku', onClick: () => { const last = state.game.kyokus[state.game.kyokus.length - 1]; state.game.kyokus.push(emptyKyoku(last ? Math.min(15, last.round + 1) : 0)); state.activeKyoku = state.game.kyokus.length - 1; renderAll(); } }, ['+']));
-  if (state.game.kyokus.length > 1) tabsEl.append(el('button', { class: 'tab del', title: 'Delete this kyoku', onClick: () => { state.game.kyokus.splice(state.activeKyoku, 1); state.activeKyoku = Math.max(0, state.activeKyoku - 1); renderAll(); } }, ['🗑']));
+  tabsEl.append(el('button', { class: 'tab add', title: 'Add kyoku', onClick: () => { const last = state.game.kyokus[state.game.kyokus.length - 1]; state.game.kyokus.push(emptyKyoku(last ? Math.min(15, last.round + 1) : 0)); state.activeKyoku = state.game.kyokus.length - 1; renderAll(); } }, [icon('add')]));
+  if (state.game.kyokus.length > 1) tabsEl.append(el('button', { class: 'tab del', title: 'Delete this kyoku', onClick: () => { state.game.kyokus.splice(state.activeKyoku, 1); state.activeKyoku = Math.max(0, state.activeKyoku - 1); renderAll(); } }, [icon('delete')]));
 }
 
 const buildLog = () => gameToTenhou(state.game);
@@ -144,7 +145,7 @@ function renderJson() {
   clear(jsonBody);
   const head = el('div', { class: 'json-head' }, [
     el('span', {}, [`${state.game.kyokus.length} kyoku`]),
-    el('button', { class: 'btn small', onClick: copyJson }, ['Copy']),
+    el('button', { class: 'btn small has-icon', onClick: copyJson }, [icon('content_copy'), 'Copy']),
   ]);
   jsonBody.append(head, el('pre', { class: 'json' }, [JSON.stringify(buildLog(), null, 1)]));
 }
