@@ -20,6 +20,17 @@ export function limitBase(han: number, fu: number, yakuman: number, rules: Rules
 
 const roundUp = (n: number) => Math.ceil(n / 100) * 100;
 
+/** tenhou-style score string, e.g. "30符3飜3900点", "満貫8000点",
+ *  "20符4飜1300-2600点" (non-dealer tsumo), "跳満6000点∀" (dealer tsumo). */
+export function scoreString(base: number, fu: number, han: number, limitName: string | null, isDealer: boolean, isTsumo: boolean): string {
+  const prefix = limitName ?? `${fu}符${han}飜`;
+  if (isTsumo) {
+    if (isDealer) return `${prefix}${roundUp(base * 2)}点∀`;
+    return `${prefix}${roundUp(base)}-${roundUp(base * 2)}点`;
+  }
+  return `${prefix}${roundUp(base * (isDealer ? 6 : 4))}点`;
+}
+
 export interface AgariPayments {
   /** per-seat deltas (indexed 0..3). */
   deltas: number[];

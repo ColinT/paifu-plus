@@ -28,7 +28,7 @@
  */
 
 import type { Game, Kyoku, PlayerHand, Turn, Call, Seat, KyokuResult } from '../core/model.js';
-import { parseTileNotation, normalizeRed } from '../core/tiles.js';
+import { parseTileNotation, normalizeRed, tilesToNotation } from '../core/tiles.js';
 import type { TenhouTile } from '../core/tiles.js';
 import { scoreWin, agariDeltas, ryuukyokuDeltas, isTenpai, counts } from '../score/index.js';
 
@@ -191,7 +191,7 @@ export function parseStream(input: string): StreamParseResult {
     void tok;
   }
 
-  function doDiscard(p: PS, _tok: Tok, opts: { tile: TenhouTile | null; tsumogiri: boolean; riichi: boolean }) {
+  function doDiscard(p: PS, tok: Tok, opts: { tile: TenhouTile | null; tsumogiri: boolean; riichi: boolean }) {
     let turnObj = p.turns[p.turns.length - 1];
     // Dealer's very first action is a discard with the first draw folded into
     // the 14-tile haipai: create the turn now, moving the extra tile to draw.
@@ -205,7 +205,11 @@ export function parseStream(input: string): StreamParseResult {
     }
     turnObj.discard = tile ?? undefined;
     if (opts.riichi) { turnObj.riichi = true; p.riichi = true; sticks += 1; }
-    if (tile !== null) removeFromHand(p, tile);
+    // Discarding a tile the player doesn't hold means the draw/discard stream is
+    // out of alignment — flag it, as the resulting log won't be a legal game.
+    if (tile !== null && !removeFromHand(p, tile)) {
+      warn(tok, `${['E', 'S', 'W', 'N'][playerSeat(p)]} discards ${tilesToNotation([tile])} but doesn't hold it (draw/discard out of step?)`);
+    }
     lastDiscard = tile !== null ? { seat: playerSeat(p), tile } : null;
     lastDiscardTurn = turnObj;
     expect = 'draw';
@@ -312,8 +316,10 @@ export function parseStream(input: string): StreamParseResult {
       p.name = name || pendingName; p.hand = tiles.slice();
       const expected = haipaiSeat === 0 ? 14 : 13;
       if (tiles.length !== expected) warn(tok, `${['E', 'S', 'W', 'N'][haipaiSeat]} haipai has ${tiles.length} tiles (expected ${expected})`);
-      // Dealer: fold the 14th tile in as the first draw.
-      if (haipaiSeat === 0 && tiles.length >= 14) { const first = p.hand.pop()!; p.haipai = p.hand.slice(); p.turns.push({ draw: first }); }
+      // Dealer holds 14 tiles: haipai is the first 13, the 14th is the first
+      // draw. Keep ALL 14 in the tracked hand (only the emitted haipai is 13),
+      // otherwise a later discard of the 14th tile looks illegal.
+      if (haipaiSeat === 0 && tiles.length >= 14) { p.haipai = p.hand.slice(0, 13); p.turns.push({ draw: p.hand[13] }); }
       else p.haipai = p.hand.slice();
       advance();
       continue;

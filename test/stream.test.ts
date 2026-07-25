@@ -82,6 +82,13 @@ describe('stream transcription DSL', () => {
     expect(diagnostics.some((d) => /missed/.test(d.message))).toBe(true);
   });
 
+  it('dealer keeps the folded 14th tile in hand (legal to discard it)', () => {
+    // East (dealer) discards its 14th/folded tile (8m) on the first turn.
+    const s = 'e1 11223344556678m 123456789p1234z 123456789s1234z 123456789p1234z 8m ryuukyoku';
+    const { diagnostics } = parseStream(s);
+    expect(diagnostics.some((d) => /hold/.test(d.message))).toBe(false);
+  });
+
   it('auto-scores a tsumo win (pinfu + menzen tsumo)', () => {
     const s = 'e1 123456789m1234z1z 123456789p1234z 123456789s1234z 23499m456678p23s 1z 9p 8p 9s 8s 4s tsumo';
     const { game } = parseStream(s);

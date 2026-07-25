@@ -4,7 +4,7 @@ import { counts, toIndex, akaCount, doraFromIndicator, canSequence } from './han
 import { decompose, isChiitoitsu, kokushiInfo } from './decompose.js';
 import { detectYaku } from './yaku.js';
 import { calcFu } from './fu.js';
-import { limitBase } from './score.js';
+import { limitBase, scoreString } from './score.js';
 import type { FullSet, WaitType, WinContext, ScoreResult, YakuLine } from './types.js';
 import type { TenhouTile } from '../core/tiles.js';
 
@@ -28,8 +28,6 @@ function doraHanFor(indicators: TenhouTile[], all34: number[]): number {
   return han;
 }
 
-const jp = (n: number) => ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三'][n] ?? String(n);
-
 export function scoreWin(ctx: WinContext): ScoreResult {
   const concealedTiles = [...ctx.concealed, ctx.winningTile];
   const meldTiles = ctx.melds.flatMap((m) => m.tiles);
@@ -37,6 +35,7 @@ export function scoreWin(ctx: WinContext): ScoreResult {
   const cCounts = counts(concealedTiles);
   const meldCount = ctx.melds.length;
   const menzen = ctx.melds.every((m) => m.type === 'ankan');
+  const dealer = ctx.seatWind === 27; // dealer's seat wind is East (27)
   const wt = toIndex(ctx.winningTile);
 
   const dora = doraHanFor(ctx.doraIndicators, all34)
@@ -87,12 +86,13 @@ export function scoreWin(ctx: WinContext): ScoreResult {
 
   function finalizeYakuman(lines: YakuLine[], yakuman: number): ScoreResult {
     const { base, name } = limitBase(0, 0, yakuman, ctx.rules);
-    return { valid: true, yaku: lines, yakuman, han: 0, fu: 0, base, limitName: name, text: name ?? '役満' };
+    const text = scoreString(base, 0, 0, name ?? '役満', dealer, ctx.isTsumo);
+    return { valid: true, yaku: lines, yakuman, han: 0, fu: 0, base, limitName: name, text };
   }
   function finalizeStandard(lines: YakuLine[], fu: number, doraN: number, dLines: YakuLine[]): ScoreResult {
     const han = lines.reduce((s, l) => s + l.han, 0) + doraN;
     const { base, name } = limitBase(han, fu, 0, ctx.rules);
-    const text = name ?? `${fu}符${jp(han)}飜`;
+    const text = scoreString(base, fu, han, name, dealer, ctx.isTsumo);
     return { valid: true, yaku: [...lines, ...dLines], yakuman: 0, han, fu, base, limitName: name, text };
   }
 }

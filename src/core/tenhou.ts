@@ -125,10 +125,9 @@ function resultArray(k: Kyoku): unknown[] {
   const winner = r.winner!;
   const from = r.kind === 'tsumo' ? winner : r.loser!;
   const gained = r.deltas[winner];
-  // Prefer the scoring engine's result; fall back to the raw point delta.
-  const scoreStr = r.scoreText
-    ? (r.fu ? `${r.fu}符${r.han}飜${gained >= 0 ? gained : ''}点` : r.scoreText)
-    : `${gained >= 0 ? '+' : ''}${gained}点`;
+  // The scoring engine's string already carries the correct hand value; fall
+  // back to the raw delta only when scoring wasn't computed.
+  const scoreStr = r.scoreText ?? `${gained >= 0 ? '+' : ''}${gained}点`;
   const yakuStrs = (r.yaku ?? []).map((y) => `${y.name}(${y.han}飜)`);
   return ['和了', r.deltas, [winner, from, winner, scoreStr, ...yakuStrs]];
 }
