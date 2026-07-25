@@ -131,13 +131,26 @@ function renderMeta() {
   metaEl.append(el('label', { class: 'field inline' }, [aka, 'Red fives (aka)']));
 }
 
+function deleteKyoku(i: number, label: string) {
+  if (state.game.kyokus.length <= 1) return;
+  if (!confirm(`Delete ${label}?`)) return;
+  state.game.kyokus.splice(i, 1);
+  if (state.activeKyoku > i) state.activeKyoku -= 1;
+  state.activeKyoku = Math.max(0, Math.min(state.activeKyoku, state.game.kyokus.length - 1));
+  renderAll();
+}
+
 function renderTabs() {
   clear(tabsEl);
+  const canDelete = state.game.kyokus.length > 1;
   state.game.kyokus.forEach((k, i) => {
-    tabsEl.append(el('button', { class: `tab${i === state.activeKyoku ? ' active' : ''}`, onClick: () => { state.activeKyoku = i; renderAll(); } }, [`${roundName(k.round)}${k.honba ? `-${k.honba}` : ''}`]));
+    const label = `${roundName(k.round)}${k.honba ? `-${k.honba}` : ''}`;
+    tabsEl.append(el('div', { class: `tab kyoku${i === state.activeKyoku ? ' active' : ''}` }, [
+      el('button', { class: 'tab-label', onClick: () => { state.activeKyoku = i; renderAll(); } }, [label]),
+      ...(canDelete ? [el('button', { class: 'tab-del', title: `Delete ${label}`, onClick: (e: Event) => { e.stopPropagation(); deleteKyoku(i, label); } }, [icon('close')])] : []),
+    ]));
   });
   tabsEl.append(el('button', { class: 'tab add', title: 'Add kyoku', onClick: () => { const last = state.game.kyokus[state.game.kyokus.length - 1]; state.game.kyokus.push(emptyKyoku(last ? Math.min(15, last.round + 1) : 0)); state.activeKyoku = state.game.kyokus.length - 1; renderAll(); } }, [icon('add')]));
-  if (state.game.kyokus.length > 1) tabsEl.append(el('button', { class: 'tab del', title: 'Delete this kyoku', onClick: () => { state.game.kyokus.splice(state.activeKyoku, 1); state.activeKyoku = Math.max(0, state.activeKyoku - 1); renderAll(); } }, [icon('delete')]));
 }
 
 const buildLog = () => gameToTenhou(state.game);

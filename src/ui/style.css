@@ -168,8 +168,15 @@ button, input, select { font: inherit; color: inherit; }
 
 .tab { background: var(--panel2); border: 1px solid var(--line); border-bottom: none; border-radius: 6px 6px 0 0; padding: 6px 12px; cursor: pointer; }
 .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.tab.add, .tab.del { background: transparent; display: inline-flex; align-items: center; }
+.tab.add { background: transparent; display: inline-flex; align-items: center; }
 .tab.has-icon { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Kyoku tab: a selectable label with its own delete (×) button. */
+.tab.kyoku { padding: 0; display: inline-flex; align-items: center; }
+.tab.kyoku .tab-label { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 6px 10px 6px 12px; }
+.tab.kyoku .tab-del { background: none; border: 0; color: inherit; cursor: pointer; opacity: .4; display: inline-flex; align-items: center; padding: 6px 8px 6px 0; }
+.tab.kyoku .tab-del:hover { opacity: 1; }
+.tab.kyoku .tab-del .mi { width: 14px; height: 14px; }
 
 .kyoku-controls { display: flex; gap: 12px; background: var(--panel); padding: 10px; border-radius: var(--radius); margin-bottom: 8px; }
 .sub { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 8px 0 4px; }
