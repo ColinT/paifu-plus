@@ -4,7 +4,6 @@
 
 import type { Kyoku, PlayerHand } from '../core/model.js';
 import type { TenhouTile } from '../core/tiles.js';
-import { tileLabel } from '../core/tileDisplay.js';
 import { tileImg } from './tileEl.js';
 import { roundName } from './state.js';
 import { el } from './dom.js';
@@ -19,11 +18,38 @@ export interface BoardSeat {
   hand: TenhouTile[]; river: BoardRiverTile[]; melds: BoardMeld[];
   drawn?: TenhouTile; // the just-drawn tile, held apart on the player's right
 }
+export interface BoardResultWinner { seat: number; scoreEn?: string; }
+export interface BoardResult {
+  kind: 'tsumo' | 'ron' | 'ryuukyoku';
+  winners: BoardResultWinner[];
+  loser?: number;
+  winningTile?: TenhouTile;
+  note?: string; // e.g. "3 tenpai" at a draw
+}
 export interface BoardView {
   round: number; honba: number; sticks: number; dora: TenhouTile[]; ura: TenhouTile[];
   seats: [BoardSeat, BoardSeat, BoardSeat, BoardSeat]; // by player index 0..3
-  resultText?: string;
+  result?: BoardResult;
   highlight?: { seat: number; tile?: TenhouTile };
+}
+
+const WIN_LIMITS: Record<string, string> = {
+  '数え役満': 'Counted yakuman', '三倍満': 'Sanbaiman', '倍満': 'Baiman', '跳満': 'Haneman', '満貫': 'Mangan', '役満': 'Yakuman',
+};
+/** Turn a tenhou score string ("30符1飜1000点", "満貫8000点", "2000点∀") into English. */
+export function scoreEnglish(scoreText?: string): string | undefined {
+  if (!scoreText) return undefined;
+  let value = '';
+  const fh = scoreText.match(/^(\d+)符(\d+)飜/);
+  if (fh) value = `${fh[2]} han, ${fh[1]} fu`;
+  else { const lim = scoreText.match(/^(数え役満|三倍満|倍満|跳満|満貫|役満)/); if (lim) value = WIN_LIMITS[lim[1]]; }
+  let points = '';
+  const pts = scoreText.match(/(\d+(?:-\d+)?)点(∀)?/);
+  if (pts) {
+    if (pts[2]) points = `${pts[1]} all`;                             // dealer tsumo (each pays)
+    else points = `${pts[1].replace('-', '/')} pts`;                 // ron, or non-dealer tsumo split
+  }
+  return [value, points].filter(Boolean).join(' · ');
 }
 
 const miniTile = (t: TenhouTile, cls = ''): HTMLElement => tileImg(t, cls);
@@ -53,7 +79,19 @@ export function kyokuToBoardView(k: Kyoku): BoardView {
       melds: p.calls.map((c) => ({ type: c.type, tiles: c.tiles, called: c.calledTile, from: c.fromSeat })),
     };
   }) as BoardView['seats'];
-  return { round: k.round, honba: k.honba, sticks: k.riichiSticks, dora: k.doraIndicators, ura: k.uraIndicators, seats, resultText: resultText(k) };
+  return { round: k.round, honba: k.honba, sticks: k.riichiSticks, dora: k.doraIndicators, ura: k.uraIndicators, seats, result: boardResult(k) };
+}
+
+function boardResult(k: Kyoku): BoardResult | undefined {
+  const r = k.result;
+  if (r.kind === 'ryuukyoku') {
+    const note = r.tenpai?.length ? `${r.tenpai.length} tenpai` : undefined;
+    return { kind: 'ryuukyoku', winners: [], note };
+  }
+  const winners: BoardResultWinner[] = r.wins?.length
+    ? r.wins.map((w) => ({ seat: w.winner, scoreEn: scoreEnglish(w.scoreText) }))
+    : (r.winner !== undefined ? [{ seat: r.winner, scoreEn: scoreEnglish(r.scoreText) }] : []);
+  return { kind: r.kind, winners, loser: r.loser, winningTile: r.winningTile };
 }
 
 function calledPosition(seat: number, fromSeat: number, n: number): number {
@@ -116,7 +154,7 @@ export function renderBoardView(container: HTMLElement, view: BoardView | undefi
     el('div', { class: 'bc-round' }, [`${roundName(view.round)}${view.honba ? ` · ${view.honba}b` : ''}`]),
     el('div', { class: 'bc-dora' }, ['ドラ ', ...view.dora.map((t) => miniTile(t)), ...(view.ura.length ? [el('span', { class: 'ura-lab' }, ['裏']), ...view.ura.map((t) => miniTile(t))] : [])]),
     ...(view.sticks ? [el('div', { class: 'bc-sticks' }, [`供託 ${view.sticks}`])] : []),
-    ...(view.resultText ? [el('div', { class: 'bc-result' }, [view.resultText])] : []),
+    ...(view.result ? [resultEl(view.result, view.seats)] : []),
   ]);
   const center = el('div', { class: 'pond-center' }, [scoreBlock(view, 2), scoreBlock(view, 3), mid, scoreBlock(view, 1), scoreBlock(view, 0)]);
   const pond = el('div', { class: 'pond' }, [center]);
@@ -129,13 +167,27 @@ export function renderBoard(container: HTMLElement, k: Kyoku | undefined): void 
   renderBoardView(container, k ? kyokuToBoardView(k) : undefined);
 }
 
-function resultText(k: Kyoku): string {
-  const r = k.result;
-  if (r.kind === 'ryuukyoku') return 'Exhaustive draw';
-  const who = r.winner !== undefined ? `P${r.winner}` : '?';
-  const tile = r.winningTile !== undefined ? tileLabel(r.winningTile) : '';
-  const score = r.scoreText ? ` · ${r.scoreText}` : '';
-  if (r.kind === 'tsumo') return `${who} tsumo ${tile}${score}`;
-  const winners = r.wins && r.wins.length > 1 ? r.wins.map((w) => `P${w.winner}`).join('+') : who;
-  return `${winners} ron ${tile}${r.loser !== undefined ? ` off P${r.loser}` : ''}${score}`;
+/** Render the centre result: winner name(s) + the winning tile image, with the
+ *  hand value in English on a second line. */
+export function resultEl(res: BoardResult, seats: { name: string }[]): HTMLElement {
+  const nameOf = (s: number) => seats[s]?.name || `P${s}`;
+  const cls = `bc-result ${res.kind}`;
+  if (res.kind === 'ryuukyoku') {
+    return el('div', { class: cls }, [
+      el('div', { class: 'bc-result-line' }, ['Exhaustive draw']),
+      ...(res.note ? [el('div', { class: 'bc-result-score' }, [res.note])] : []),
+    ]);
+  }
+  const verb = res.kind === 'tsumo' ? 'tsumo' : 'ron';
+  const line: (Node | string)[] = [el('span', { class: 'res-who' }, [res.winners.map((w) => nameOf(w.seat)).join(' + ')]), ` ${verb} `];
+  if (res.winningTile !== undefined) line.push(miniTile(res.winningTile));
+  if (res.kind === 'ron' && res.loser !== undefined) line.push(' off ', el('span', { class: 'res-who' }, [nameOf(res.loser)]));
+
+  const scoreLine = res.winners.length > 1
+    ? res.winners.filter((w) => w.scoreEn).map((w) => `${nameOf(w.seat)}: ${w.scoreEn}`).join(' · ')
+    : res.winners[0]?.scoreEn;
+  return el('div', { class: cls }, [
+    el('div', { class: 'bc-result-line' }, line),
+    ...(scoreLine ? [el('div', { class: 'bc-result-score' }, [scoreLine])] : []),
+  ]);
 }

@@ -88,8 +88,11 @@ button, input, select { font: inherit; color: inherit; }
 .bc-round { font-weight: 700; } .bc-sticks, .bc-dora { font-size: 11px; color: #cfe; display: flex; align-items: center; gap: 2px; }
 .bc-dora { --h: 24px; }
 .ura-lab { margin-left: 4px; }
-.bc-result { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(0,0,0,.3); max-width: 140px; }
+.bc-result { font-size: 11px; padding: 3px 8px; border-radius: 4px; background: rgba(0,0,0,.3); max-width: 160px; }
 .bc-result.tsumo, .bc-result.ron { color: #ffd66b; }
+.bc-result-line { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 3px; --h: 22px; }
+.bc-result-line .res-who { font-weight: 700; }
+.bc-result-score { margin-top: 2px; font-size: 10px; color: #cfe; text-align: center; }
 
 .river { display: grid; grid-template-columns: repeat(6, auto); gap: 7px 1px; align-content: start; justify-content: center; --h: 34px; }
 .riv-bottom { grid-area: 3 / 2; } .riv-top { grid-area: 1 / 2; transform: rotate(180deg); }

@@ -2,8 +2,8 @@
 
 import { buildReplay } from '../replay/replay.js';
 import type { ReplayGame, KyokuReplay, Step } from '../replay/replay.js';
-import { renderBoardView } from './board.js';
-import type { BoardView } from './board.js';
+import { renderBoardView, scoreEnglish } from './board.js';
+import type { BoardView, BoardResult } from './board.js';
 import { roundName } from './state.js';
 import { tileLabel } from '../core/tileDisplay.js';
 import { el, clear } from './dom.js';
@@ -15,23 +15,21 @@ interface ReplayState {
   log: unknown; id: string; comments: Comment[];
 }
 
-function resultTextFromLog(result: any): string | undefined {
+function resultFromLog(result: any, step: Step): BoardResult | undefined {
   if (!Array.isArray(result)) return undefined;
-  const kind = result[0];
-  if (typeof kind === 'string' && kind.includes('流')) return 'Exhaustive draw';
-  if (typeof kind === 'string' && kind.includes('和')) {
-    // One (deltas, detail) pair per winning hand; details sit at indices 2, 4, …
-    const details = result.filter((_, i) => i >= 2 && i % 2 === 0 && Array.isArray(result[i])) as any[][];
-    if (details.length) {
-      const [who0, from0, , score0] = details[0];
-      if (who0 === from0) return `P${who0} tsumo · ${score0}`;
-      const winners = details.map((d) => `P${d[0]}`).join('+');
-      const scores = details.map((d) => d[3]).join(' / ');
-      return `${winners} ron off P${from0} · ${scores}`;
-    }
-    return 'Win';
-  }
-  return undefined;
+  const kind = String(result[0] ?? '');
+  if (kind.includes('流')) return { kind: 'ryuukyoku', winners: [] };
+  if (!kind.includes('和')) return undefined;
+  // One (deltas, detail) pair per winning hand; details sit at indices 2, 4, …
+  const details = result.filter((_: unknown, i: number) => i >= 2 && i % 2 === 0 && Array.isArray(result[i])) as any[][];
+  if (!details.length) return undefined;
+  const from = Number(details[0][1]);
+  const isTsumo = Number(details[0][0]) === from;
+  const winners = details.map((d) => ({ seat: Number(d[0]), scoreEn: scoreEnglish(typeof d[3] === 'string' ? d[3] : undefined) }));
+  const winningTile = isTsumo
+    ? (step.tile ?? step.players[Number(details[0][0])]?.drawn ?? undefined)
+    : step.players[from]?.river.at(-1)?.tile;
+  return { kind: isTsumo ? 'tsumo' : 'ron', winners, loser: isTsumo ? undefined : from, winningTile: winningTile ?? undefined };
 }
 
 function stepToBoardView(g: ReplayGame, k: KyokuReplay, step: Step): BoardView {
@@ -46,7 +44,7 @@ function stepToBoardView(g: ReplayGame, k: KyokuReplay, step: Step): BoardView {
       melds: p.melds.map((m) => ({ type: m.type, tiles: m.tiles, called: m.called, from: m.from })),
     };
   }) as BoardView['seats'];
-  return { round: k.round, honba: k.honba, sticks: k.sticks, dora: k.dora, ura: atEnd ? k.ura : [], seats, resultText: atEnd ? resultTextFromLog(k.result) : undefined, highlight: { seat: step.active, tile: step.tile } };
+  return { round: k.round, honba: k.honba, sticks: k.sticks, dora: k.dora, ura: atEnd ? k.ura : [], seats, result: atEnd ? resultFromLog(k.result, step) : undefined, highlight: { seat: step.active, tile: step.tile } };
 }
 
 function stepLabel(g: ReplayGame, step: Step): string {
