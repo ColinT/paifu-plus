@@ -87,10 +87,14 @@ function meldsEl(melds: BoardMeld[], seat: number): HTMLElement {
 
 function station(view: BoardView, seat: number): HTMLElement {
   const s = view.seats[seat];
+  const flipped = seat === 1 || seat === 2; // South/West read right-to-left once rotated
   const hand = [...s.hand];
-  if (seat === 1 || seat === 2) hand.reverse(); // read correctly once rotated
-  const tiles: (HTMLElement)[] = hand.map((t) => miniTile(t));
-  if (s.drawn !== undefined) { tiles.push(el('span', { class: 'hand-gap' }), miniTile(s.drawn, 'drawn')); }
+  if (flipped) hand.reverse();
+  const tiles: HTMLElement[] = hand.map((t) => miniTile(t));
+  if (s.drawn !== undefined) {
+    const extra = [el('span', { class: 'hand-gap' }), miniTile(s.drawn, 'drawn')];
+    if (flipped) tiles.unshift(extra[1], extra[0]); else tiles.push(...extra);
+  }
   return el('div', { class: `station station-${POS[seat]}` }, [el('div', { class: 'hand' }, tiles)]);
 }
 
