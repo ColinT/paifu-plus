@@ -87,7 +87,11 @@ function renderTabs() {
 const buildLog = () => gameToTenhou(state.game);
 function renderJson() {
   clear(jsonBody);
-  jsonBody.append(el('div', { class: 'json-head' }, [`${state.game.kyokus.length} kyoku`]), el('pre', { class: 'json' }, [JSON.stringify(buildLog(), null, 1)]));
+  const head = el('div', { class: 'json-head' }, [
+    el('span', {}, [`${state.game.kyokus.length} kyoku`]),
+    el('button', { class: 'btn small', onClick: copyJson }, ['Copy']),
+  ]);
+  jsonBody.append(head, el('pre', { class: 'json' }, [JSON.stringify(buildLog(), null, 1)]));
 }
 function renderBoardPanel() { renderBoard(boardBody, state.game.kyokus[state.activeKyoku]); }
 function renderForm() { renderMeta(); renderTabs(); const k = state.game.kyokus[state.activeKyoku]; if (k) renderKyoku(editorEl, k, { rerender: renderAll, refreshJson: renderJson }); else clear(editorEl); }
