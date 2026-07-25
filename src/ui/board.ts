@@ -65,6 +65,9 @@ function meldsEl(p: PlayerHand, seat: number): HTMLElement {
 /** A player's station is now just the hand (name/score moved to the centre). */
 function station(k: Kyoku, seat: number): HTMLElement {
   const hand = reconstructHand(k.players[seat]);
+  // South (1) and West (2) read right-to-left once their tiles are rotated, so
+  // reverse their order to keep the hand ascending from the viewer's side.
+  if (seat === 1 || seat === 2) hand.reverse();
   return el('div', { class: `station station-${POS[seat]}` }, [
     el('div', { class: 'hand' }, hand.map((t) => miniTile(t))),
   ]);
