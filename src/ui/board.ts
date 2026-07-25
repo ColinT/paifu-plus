@@ -4,7 +4,8 @@
 
 import type { Kyoku, PlayerHand } from '../core/model.js';
 import type { TenhouTile } from '../core/tiles.js';
-import { tileGlyph, tileLabel, tileSuitClass } from '../core/tileDisplay.js';
+import { tileLabel } from '../core/tileDisplay.js';
+import { tileImg } from './tileEl.js';
 import { roundName } from './state.js';
 import { el } from './dom.js';
 
@@ -12,10 +13,7 @@ import { el } from './dom.js';
 const POS = ['bottom', 'right', 'top', 'left'] as const;
 const WINDS = ['E', 'S', 'W', 'N'];
 
-function miniTile(t: TenhouTile, cls = ''): HTMLElement {
-  const { suit, red } = tileSuitClass(t);
-  return el('span', { class: `bt suit-${suit}${red ? ' aka' : ''} ${cls}`, title: tileLabel(t) }, [tileGlyph(t)]);
-}
+const miniTile = (t: TenhouTile, cls = ''): HTMLElement => tileImg(t, cls);
 
 /** Approximate concealed hand for display: haipai + draws − discards − meld tiles. */
 function reconstructHand(p: PlayerHand): TenhouTile[] {

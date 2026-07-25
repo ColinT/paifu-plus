@@ -1,7 +1,9 @@
 /** A small modal tile picker. Resolves to a tile code, 'delete', or null. */
 
 import type { TenhouTile } from '../core/tiles.js';
-import { allPickableTiles, tileGlyph, tileLabel, tileSuitClass } from '../core/tileDisplay.js';
+import { allPickableTiles, tileLabel } from '../core/tileDisplay.js';
+import { tileImg } from './tileEl.js';
+import { el } from './dom.js';
 
 export type PickResult = TenhouTile | 'delete' | null;
 
@@ -22,9 +24,8 @@ export function pickTile(opts: { allowDelete?: boolean; title?: string } = {}): 
     grid.className = 'tile-grid';
     for (const t of allPickableTiles()) {
       const b = document.createElement('button');
-      const { suit, red } = tileSuitClass(t);
-      b.className = `tile suit-${suit}${red ? ' aka' : ''}`;
-      b.innerHTML = `<span class="glyph">${tileGlyph(t)}</span><span class="lab">${tileLabel(t)}</span>`;
+      b.className = 'tile';
+      b.append(tileImg(t), el('span', { class: 'lab' }, [tileLabel(t)]));
       b.onclick = () => { done(t); };
       grid.appendChild(b);
     }

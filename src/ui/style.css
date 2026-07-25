@@ -47,43 +47,41 @@ button, input, select { font: inherit; color: inherit; }
 .seat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
 .seat-score { color: #cfe; font-variant-numeric: tabular-nums; }
 .wind.dealer { outline: 2px solid #ffd66b; }
-.station .hand { display: flex; flex-wrap: nowrap; gap: 1px; }
+.station .hand { display: flex; flex-wrap: nowrap; gap: 1px; --h: 44px; }
 .station-left .hand, .station-right .hand { flex-direction: column; align-items: center; }
-/* rotate each seat's hand tiles to face that player (E upright, S 90° ccw, W 180°, N 90° cw) */
-.station-top .hand .bt { transform: rotate(180deg); }
-.station-right .hand .bt { transform: rotate(-90deg); }
-.station-left .hand .bt { transform: rotate(90deg); }
-/* side seats: square footprint so the 90°-rotated glyph stays in its box, and a
-   smaller size so all 13 tiles fit the column height without overflowing. */
-.station-left .hand .bt, .station-right .hand .bt {
-  font-size: 26px; width: 1.4em; height: 1.4em;
-  display: inline-flex; align-items: center; justify-content: center; overflow: hidden;
-}
-.station-left, .station-right { overflow: hidden; }
+/* rotate each seat's hand tiles to face that player (E upright, S ccw, W 180°, N cw).
+   The inner .tf rotates; for side seats the outer .bt takes a landscape box so the
+   rotated tile is fully contained (all seats keep the same tile size). */
+.station-top .hand .tf { transform: rotate(180deg); }
+.station-right .hand .bt, .station-left .hand .bt { width: var(--h); height: calc(var(--h) * 0.75); }
+.station-right .hand .tf { transform: rotate(-90deg); }
+.station-left .hand .tf { transform: rotate(90deg); }
 
 .pond { grid-area: 2 / 2; display: grid; grid-template-columns: 1fr 1.3fr 1fr; grid-template-rows: 1fr 1.3fr 1fr; place-items: center; gap: 2px; }
 .pond-center { grid-area: 2 / 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center; }
 .bc-round { font-weight: 700; } .bc-sticks, .bc-dora { font-size: 11px; color: #cfe; display: flex; align-items: center; gap: 2px; }
+.bc-dora { --h: 26px; }
 .ura-lab { margin-left: 4px; }
 .bc-result { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(0,0,0,.3); max-width: 150px; }
 .bc-result.tsumo, .bc-result.ron { color: #ffd66b; }
 
-.river { display: grid; grid-template-columns: repeat(6, auto); gap: 1px; align-content: start; justify-content: center; }
+.river { display: grid; grid-template-columns: repeat(6, auto); gap: 1px; align-content: start; justify-content: center; --h: 34px; }
 .riv-bottom { grid-area: 3 / 2; } .riv-top { grid-area: 1 / 2; transform: rotate(180deg); }
 .riv-right { grid-area: 2 / 3; transform: rotate(270deg); } .riv-left { grid-area: 2 / 1; transform: rotate(90deg); }
-.river .bt { font-size: 32px; }
-.river .bt.tsumogiri { opacity: .45; }
-.river .bt.riichi { transform: rotate(90deg); }
+.river .bt.tsumogiri { opacity: .5; }
+.river .bt.riichi .tf { transform: rotate(90deg); }
 
-.melds { display: flex; gap: 3px; }
+.melds { display: flex; gap: 3px; --h: 30px; }
 .melds-bottom { grid-area: 3 / 3; } .melds-top { grid-area: 1 / 1; transform: rotate(180deg); }
 .melds-right { grid-area: 1 / 3; transform: rotate(270deg); } .melds-left { grid-area: 3 / 1; transform: rotate(90deg); }
 .meld { display: inline-flex; gap: 1px; background: rgba(255,255,255,.08); border-radius: 3px; padding: 1px; }
-.meld .bt { font-size: 30px; } .meld .bt.called { transform: rotate(90deg); opacity: .95; }
+.meld .bt.called { width: var(--h); height: calc(var(--h) * 0.75); }
+.meld .bt.called .tf { transform: rotate(90deg); }
 
-.bt { font-size: 36px; line-height: 1; }
-.bt.suit-m { color: var(--m); } .bt.suit-p { color: var(--p); } .bt.suit-s { color: var(--s); } .bt.suit-z { color: #e8eef6; }
-.bt.aka { color: var(--aka); }
+/* image tile: outer .bt is the sizing/footprint box; inner .tf layers the face
+   symbol over the tile front and is what rotates. Sized by --h (from context). */
+.bt { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; width: calc(var(--h, 40px) * 0.75); height: var(--h, 40px); }
+.tf { display: block; width: calc(var(--h, 40px) * 0.75); height: var(--h, 40px); background-repeat: no-repeat; background-position: center; background-size: contain; }
 .board-empty { color: var(--muted); padding: 30px; }
 
 .brand { font-weight: 700; letter-spacing: .3px; margin-right: 6px; }
@@ -129,13 +127,9 @@ button, input, select { font: inherit; color: inherit; }
 .tile-row { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; min-height: 30px; }
 .chip.riichi { border-color: var(--danger); box-shadow: inset 0 -3px 0 var(--danger); }
 .chip.tsumogiri { opacity: .5; }
-.chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 2px 4px; cursor: pointer; line-height: 1; display: inline-flex; align-items: center; }
+.chip { --h: 32px; background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 2px; cursor: pointer; line-height: 1; display: inline-flex; align-items: center; }
 .chip.static { cursor: default; }
-.chip .glyph { font-size: 24px; }
-.chip.suit-m .glyph { color: var(--m); } .chip.suit-p .glyph { color: var(--p); }
-.chip.suit-s .glyph { color: var(--s); } .chip.suit-z .glyph { color: var(--z); }
-.chip.aka .glyph { color: var(--aka); text-shadow: 0 0 6px rgba(255,80,80,.6); }
-.chip.add { color: var(--muted); font-size: 18px; padding: 2px 8px; }
+.chip.add { color: var(--muted); font-size: 18px; padding: 2px 8px; align-self: stretch; align-items: center; }
 .chip:hover { border-color: var(--accent); }
 
 .turns-table { border-collapse: collapse; width: 100%; margin-bottom: 4px; }
@@ -160,13 +154,9 @@ button, input, select { font: inherit; color: inherit; }
 .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; max-width: 90vw; }
 .modal-title { font-weight: 600; margin-bottom: 10px; }
 .tile-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
-.tile-grid .tile { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px; cursor: pointer; display: flex; flex-direction: column; align-items: center; }
+.tile-grid .tile { --h: 46px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .tile-grid .tile:hover { border-color: var(--accent); }
-.tile-grid .tile .glyph { font-size: 30px; line-height: 1; }
 .tile-grid .tile .lab { font-size: 10px; color: var(--muted); }
-.tile-grid .tile.suit-m .glyph { color: var(--m); } .tile-grid .tile.suit-p .glyph { color: var(--p); }
-.tile-grid .tile.suit-s .glyph { color: var(--s); } .tile-grid .tile.suit-z .glyph { color: var(--z); }
-.tile-grid .tile.aka .glyph { color: var(--aka); }
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
 .banner { background: var(--accent); color: #fff; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; }

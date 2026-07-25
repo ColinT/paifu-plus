@@ -6,7 +6,8 @@
 import type { Kyoku, PlayerHand, Turn, Seat, EndKind } from '../core/model.js';
 import type { TenhouTile } from '../core/tiles.js';
 import { tilesToNotation, parseTileNotation } from '../core/tiles.js';
-import { tileGlyph, tileLabel, tileSuitClass } from '../core/tileDisplay.js';
+import { tileLabel } from '../core/tileDisplay.js';
+import { tileImg } from './tileEl.js';
 import { roundName, seatWind } from './state.js';
 import { pickTile } from './tilePicker.js';
 import { el, clear } from './dom.js';
@@ -14,10 +15,7 @@ import { el, clear } from './dom.js';
 interface Ctx { rerender: () => void; refreshJson: () => void; }
 
 function tileChip(t: TenhouTile, onClick?: () => void, extraClass = ''): HTMLElement {
-  const { suit, red } = tileSuitClass(t);
-  const c = el('button', { class: `chip suit-${suit}${red ? ' aka' : ''}${onClick ? '' : ' static'} ${extraClass}`, title: tileLabel(t) }, [
-    el('span', { class: 'glyph' }, [tileGlyph(t)]),
-  ]);
+  const c = el('button', { class: `chip${onClick ? '' : ' static'} ${extraClass}` }, [tileImg(t)]);
   if (onClick) c.onclick = onClick;
   return c;
 }
