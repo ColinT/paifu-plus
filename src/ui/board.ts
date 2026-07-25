@@ -127,9 +127,11 @@ function meldsEl(melds: BoardMeld[], seat: number): HTMLElement {
   return m;
 }
 
-function station(view: BoardView, seat: number): HTMLElement {
+function station(view: BoardView, seat: number, rerender: () => void): HTMLElement {
   const s = view.seats[seat];
-  const hide = hiddenHands.has(seat);
+  // A winner's hand is always revealed at the ron/tsumo result, even if hidden.
+  const revealWinner = !!view.result && view.result.kind !== 'ryuukyoku' && view.result.winners.some((w) => w.seat === seat);
+  const hide = hiddenHands.has(seat) && !revealWinner;
   const flipped = seat === 1 || seat === 2; // South/West read right-to-left once rotated
   const hand = [...s.hand];
   if (flipped) hand.reverse();
@@ -139,20 +141,23 @@ function station(view: BoardView, seat: number): HTMLElement {
     const extra = [el('span', { class: 'hand-gap' }), drawn];
     if (flipped) tiles.unshift(extra[1], extra[0]); else tiles.push(...extra);
   }
-  return el('div', { class: `station station-${POS[seat]}` }, [el('div', { class: 'hand' }, tiles)]);
+  const children: (Node | string)[] = [el('div', { class: 'hand' }, tiles)];
+  // No toggle for a revealed winner — the winning hand can't be hidden.
+  if (!revealWinner) {
+    children.push(el('button', {
+      class: `hand-toggle${hide ? ' on' : ''}`, title: hide ? 'Show this hand' : 'Hide this hand',
+      onClick: (e: Event) => { e.stopPropagation(); if (hiddenHands.has(seat)) hiddenHands.delete(seat); else hiddenHands.add(seat); rerender(); },
+    }, [hide ? 'Show' : 'Hide']));
+  }
+  return el('div', { class: `station station-${POS[seat]}` }, children);
 }
 
-function scoreBlock(view: BoardView, seat: number, rerender: () => void): HTMLElement {
+function scoreBlock(view: BoardView, seat: number): HTMLElement {
   const s = view.seats[seat];
   const isDealer = (view.round % 4) === seat;
   const wind = WINDS[((seat - (view.round % 4)) + 4) % 4];
-  const hidden = hiddenHands.has(seat);
-  const eye = el('button', {
-    class: `eye${hidden ? ' off' : ''}`, title: hidden ? 'Show hand' : 'Hide hand',
-    onClick: (e: Event) => { e.stopPropagation(); if (hidden) hiddenHands.delete(seat); else hiddenHands.add(seat); rerender(); },
-  }, [hidden ? '🙈' : '👁']);
   return el('div', { class: `sc sc-${POS[seat]}` }, [
-    el('div', { class: 'sc-head' }, [el('span', { class: `wind wind-${wind}${isDealer ? ' dealer' : ''}` }, [wind]), el('span', { class: 'sc-name' }, [s.name]), eye]),
+    el('div', { class: 'sc-head' }, [el('span', { class: `wind wind-${wind}${isDealer ? ' dealer' : ''}` }, [wind]), el('span', { class: 'sc-name' }, [s.name])]),
     el('div', { class: 'sc-pts' }, [String(s.score)]),
     ...(s.riichi ? [el('div', { class: 'stick' })] : []),
   ]);
@@ -168,10 +173,10 @@ export function renderBoardView(container: HTMLElement, view: BoardView | undefi
     ...(view.result ? [resultEl(view.result, view.seats)] : []),
   ]);
   const rerender = () => renderBoardView(container, view);
-  const center = el('div', { class: 'pond-center' }, [scoreBlock(view, 2, rerender), scoreBlock(view, 3, rerender), mid, scoreBlock(view, 1, rerender), scoreBlock(view, 0, rerender)]);
+  const center = el('div', { class: 'pond-center' }, [scoreBlock(view, 2), scoreBlock(view, 3), mid, scoreBlock(view, 1), scoreBlock(view, 0)]);
   const pond = el('div', { class: 'pond' }, [center]);
   for (let s = 0; s < 4; s++) pond.append(riverEl(view.seats[s].river, s), meldsEl(view.seats[s].melds, s));
-  container.append(el('div', { class: 'board' }, [station(view, 2), station(view, 3), pond, station(view, 1), station(view, 0)]));
+  container.append(el('div', { class: 'board' }, [station(view, 2, rerender), station(view, 3, rerender), pond, station(view, 1, rerender), station(view, 0, rerender)]));
 }
 
 /** Convenience wrapper for the editor's live board. */

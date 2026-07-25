@@ -94,9 +94,13 @@ button, input, select { font: inherit; color: inherit; }
 .bc-result-line .res-who { font-weight: 700; }
 .bc-result-score { margin-top: 2px; font-size: 10px; color: #cfe; text-align: center; }
 
-.sc-head .eye { background: none; border: 0; padding: 0; cursor: pointer; font-size: 11px; line-height: 1; opacity: .5; filter: grayscale(1); }
-.sc-head .eye:hover { opacity: 1; filter: none; }
-.sc-head .eye.off { opacity: .95; filter: none; }
+.station .hand-toggle {
+  align-self: center; margin-top: 4px; padding: 1px 8px; border-radius: 10px; cursor: pointer;
+  font-size: 10px; line-height: 1.4; color: var(--fg);
+  background: rgba(0, 0, 0, .3); border: 1px solid rgba(255, 255, 255, .18); opacity: .65;
+}
+.station .hand-toggle:hover { opacity: 1; border-color: rgba(255, 255, 255, .4); }
+.station .hand-toggle.on { background: rgba(210, 140, 40, .35); border-color: rgba(255, 200, 120, .5); opacity: .95; }
 
 .river { display: grid; grid-template-columns: repeat(6, auto); gap: 7px 1px; align-content: start; justify-content: center; --h: 34px; }
 .riv-bottom { grid-area: 3 / 2; } .riv-top { grid-area: 1 / 2; transform: rotate(180deg); }
