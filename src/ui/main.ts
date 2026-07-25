@@ -1,6 +1,7 @@
 import './style.css';
 import { importPdf } from '../pdf/browser.js';
 import { gameToTenhou } from '../core/tenhou.js';
+import { tenhouToGame } from '../core/tenhouImport.js';
 import { parseStream } from '../stream/parse.js';
 import type { Diagnostic } from '../stream/parse.js';
 import { newGame, gameFromKyokus, emptyKyoku, roundName } from './state.js';
@@ -21,18 +22,45 @@ const replayEl = el('div', { class: 'replay-root' });
 app.append(toolbarEl, panelsEl, replayEl);
 
 let mode: 'editor' | 'replay' = 'editor';
+// Signature of the log the editor and replayer currently agree on. Guards the
+// editor⇄replay sync from bouncing a log we just pushed back onto itself.
+let syncedSig = '';
+
 function setMode(m: 'editor' | 'replay') {
   mode = m;
+  if (m === 'replay') syncReplayFromEditor();
+  else renderAll();
   panelsEl.style.display = m === 'editor' ? 'flex' : 'none';
   replayEl.style.display = m === 'replay' ? 'block' : 'none';
   renderToolbar();
 }
-const replay = mountReplay(replayEl, { getEditorLog: () => gameToTenhou(state.game) });
+
+const replay = mountReplay(replayEl, {
+  getEditorLog: () => gameToTenhou(state.game),
+  // A log loaded in the replayer (paste / shared link / load-from-editor) flows
+  // back into the editor so switching to Editor shows the same game.
+  onLog: (log) => {
+    const sig = JSON.stringify(log);
+    if (sig === syncedSig) return; // this is the log we just pushed from the editor
+    syncedSig = sig;
+    try {
+      state.game = tenhouToGame(log);
+      state.activeKyoku = Math.max(0, state.game.kyokus.length - 1);
+      state.streamText = ''; streamInput.value = ''; clear(diagEl);
+      if (mode === 'editor') renderAll();
+    } catch (err) { console.warn('Could not import replay log into editor:', err); }
+  },
+});
 replayEl.style.display = 'none';
 
-// A shared link (#replay=...) opens straight into the replayer.
-const shared = readShareFromUrl();
-if (shared) { setMode('replay'); replay.loadShared(shared); }
+/** Push the editor's current game into the replayer, unless it already has it. */
+function syncReplayFromEditor() {
+  const log = gameToTenhou(state.game);
+  const sig = JSON.stringify(log);
+  if (sig === syncedSig) return; // replayer already shows this game
+  syncedSig = sig;
+  replay.loadLog(log);
+}
 
 function panel(title: string, key: string, body: HTMLElement, opts: { collapsed?: boolean; grow?: boolean } = {}): HTMLElement {
   const sec = el('section', { class: `panel${opts.collapsed ? ' collapsed' : ''}${opts.grow ? ' grow' : ''}`, 'data-key': key });
@@ -165,3 +193,7 @@ function downloadJson() {
 function flash(msg: string) { const f = el('div', { class: 'flash' }, [msg]); document.body.append(f); setTimeout(() => f.remove(), 1600); }
 
 renderAll();
+
+// A shared link (#replay=...) opens straight into the replayer.
+const shared = readShareFromUrl();
+if (shared) { setMode('replay'); replay.loadShared(shared); }

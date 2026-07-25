@@ -50,7 +50,7 @@ function stepLabel(g: ReplayGame, step: Step): string {
   return `${name}: ${step.label}${tile}`;
 }
 
-export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any }) {
+export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; onLog?: (log: any) => void }) {
   const state: ReplayState = { game: null, ky: 0, step: 0, playing: false, log: null, id: '', comments: [] };
   let timer: number | undefined;
 
@@ -79,6 +79,7 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any }
     }
     if (extraComments?.length) saveComments(state.id, state.comments);
     state.ky = 0; state.step = 0; stop(); render();
+    opts.onLog?.(log);
   }
   function loadText(text: string) {
     let log: any;
@@ -172,5 +173,5 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any }
   function stop() { state.playing = false; if (timer) { clearInterval(timer); timer = undefined; } }
 
   render();
-  return { load: loadText, loadShared };
+  return { load: loadText, loadShared, loadLog };
 }
