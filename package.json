@@ -1,0 +1,26 @@
+{
+  "name": "paifun-to-tenhou",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Convert riichi mahjong paifun PDF records into tenhou.net/6 JSON, and create paifu manually.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "convert": "tsx scripts/convert-cli.ts"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "^0.1.65",
+    "@types/node": "^26.1.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}
