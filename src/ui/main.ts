@@ -4,6 +4,7 @@ import { gameToTenhou } from '../core/tenhou.js';
 import { tenhouToGame } from '../core/tenhouImport.js';
 import { parseStream } from '../stream/parse.js';
 import type { Diagnostic } from '../stream/parse.js';
+import { gameToStream } from '../stream/serialize.js';
 import { newGame, gameFromKyokus, emptyKyoku, roundName } from './state.js';
 import type { EditorState } from './state.js';
 import { renderKyoku } from './editor.js';
@@ -46,7 +47,12 @@ const replay = mountReplay(replayEl, {
     try {
       state.game = tenhouToGame(log);
       state.activeKyoku = Math.max(0, state.game.kyokus.length - 1);
-      state.streamText = ''; streamInput.value = ''; clear(diagEl);
+      // Populate the stream transcription with an editable rendering of the log.
+      // Assigning .value directly doesn't fire 'input', so state.game (the
+      // faithful decode) stays authoritative until the user actually edits.
+      state.streamText = gameToStream(state.game);
+      streamInput.value = state.streamText;
+      clear(diagEl);
       if (mode === 'editor') renderAll();
     } catch (err) { console.warn('Could not import replay log into editor:', err); }
   },

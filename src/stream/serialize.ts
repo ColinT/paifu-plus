@@ -1,0 +1,96 @@
+/**
+ * Game model → linear transcription DSL (the inverse of {@link ./parse.ts}).
+ *
+ * Used to populate the editor's stream textarea when a log is loaded via the
+ * replay tool, so the user gets an editable text transcription rather than a
+ * blank box. It reuses the replay engine to recover play order (draws, calls,
+ * kans interleaved across seats), then renders each event as a DSL token.
+ *
+ * It is a best-effort, human-readable transcription: it round-trips the common
+ * cases (draws, discards, riichi, tsumogiri, chi/pon/daiminkan, ankan, tsumo,
+ * ryuukyoku). A few DSL limitations remain the parser's, not the emitter's —
+ * notably ron winner attribution (the DSL infers it) and added-kan (kakan).
+ */
+
+import type { Game, Kyoku, Seat } from '../core/model.js';
+import { tilesToNotation } from '../core/tiles.js';
+import { gameToTenhou } from '../core/tenhou.js';
+import { buildReplay } from '../replay/replay.js';
+import type { KyokuReplay } from '../replay/replay.js';
+
+const WINDS = ['e', 's', 'w', 'n'];
+
+function roundToken(round: number, honba: number, sticks: number): string {
+  const wind = WINDS[Math.floor(round / 4)] ?? 'e';
+  let s = `${wind}${(round % 4) + 1}`;
+  if (honba || sticks) s += `.${honba}`;
+  if (sticks) s += `.${sticks}`;
+  return s;
+}
+
+const isDefaultName = (n: string): boolean => !n || /^(Player |P)\d$/.test(n);
+
+/** Relative position of the discarder as seen from the caller (parser prefix). */
+function relPrefix(caller: Seat, from: Seat): string {
+  const d = ((caller - from) + 4) % 4;
+  return d === 1 ? 'k' : d === 2 ? 't' : 's'; // kamicha / toimen / shimocha
+}
+
+export function kyokuToStream(k: Kyoku, rk: KyokuReplay): string {
+  const toks: string[] = [];
+  toks.push(roundToken(k.round, k.honba, k.riichiSticks));
+  if (k.doraIndicators.length) toks.push('d' + tilesToNotation(k.doraIndicators));
+
+  const dealer = (k.round % 4) as Seat;
+  // Haipai in current-seat order (E, S, W, N). The dealer's 14th tile (their
+  // first draw) is folded into the haipai, matching the parser's convention.
+  for (let s = 0 as Seat; s < 4; s++) {
+    const fixed = ((k.round + s) % 4) as Seat;
+    const p = k.players[fixed];
+    const tiles = [...p.haipai];
+    if (s === 0 && p.turns[0]?.draw !== undefined) tiles.push(p.turns[0].draw);
+    const note = tilesToNotation(tiles);
+    toks.push(isDefaultName(p.name) ? note : `${p.name.replace(/\s+/g, '_')}:${note}`);
+  }
+
+  // Play order from the replay engine, skipping the haipai step and the dealer's
+  // already-folded first draw.
+  let skippedDealerDraw = false;
+  for (let i = 1; i < rk.steps.length; i++) {
+    const step = rk.steps[i];
+    if (step.action === 'end') break;
+
+    if (step.action === 'draw') {
+      if (step.active === dealer && !skippedDealerDraw) { skippedDealerDraw = true; continue; }
+      if (step.tile !== undefined) toks.push(tilesToNotation([step.tile]));
+    } else if (step.action === 'discard') {
+      const river = step.players[step.active].river;
+      const last = river[river.length - 1];
+      if (!last) continue;
+      if (last.riichi) toks.push('r' + tilesToNotation([last.tile]));
+      else if (last.tsumogiri) toks.push('x' + tilesToNotation([last.tile]));
+      else toks.push(tilesToNotation([last.tile]));
+    } else if (step.action === 'call') {
+      const melds = step.players[step.active].melds;
+      const meld = melds[melds.length - 1];
+      if (!meld) continue;
+      const caller = step.active as Seat;
+      const from = (meld.from ?? step.active) as Seat;
+      if (meld.type === 'chi') toks.push('chi');
+      else if (meld.type === 'pon') toks.push(relPrefix(caller, from) + 'pon');
+      else if (meld.type === 'daiminkan') toks.push(relPrefix(caller, from) + 'kan');
+      else toks.push('kan'); // kakan (best effort)
+    } else if (step.action === 'kan') {
+      toks.push('kan'); // ankan
+    }
+  }
+
+  if (k.uraIndicators.length) toks.push('u' + tilesToNotation(k.uraIndicators));
+  toks.push(k.result.kind === 'tsumo' ? 'tsumo' : k.result.kind === 'ron' ? 'ron' : 'ryuukyoku');
+  return toks.join(' ');
+}
+
+export function gameToStream(game: Game): string {
+  const replay = buildReplay(gameToTenhou(game));
+  return game.kyokus.map((k, i) => kyokuToStream(k, replay.kyokus[i])).join('\n');
+}
