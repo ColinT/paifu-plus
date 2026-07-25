@@ -1,6 +1,6 @@
-/** Live top-down mahjong table render of a Kyoku, for verifying a transcription.
- *  Bottom = current East (dealer); rivers + melds sit in the central pond,
- *  each rotated to face outward toward its seat (riichi tiles laid sideways). */
+/** Top-down mahjong table render, driven by a normalized BoardView so both the
+ *  editor (a Kyoku, end state) and the replayer (a Step, mid-hand) can render it.
+ *  Bottom = player index 0; right/top/left = 1/2/3. Winds rotate with the round. */
 
 import type { Kyoku, PlayerHand } from '../core/model.js';
 import type { TenhouTile } from '../core/tiles.js';
@@ -9,108 +9,108 @@ import { tileImg } from './tileEl.js';
 import { roundName } from './state.js';
 import { el } from './dom.js';
 
-// seat 0..3 → position around the table (bottom=E, right=S, top=W, left=N)
 const POS = ['bottom', 'right', 'top', 'left'] as const;
 const WINDS = ['E', 'S', 'W', 'N'];
 
+export interface BoardRiverTile { tile: TenhouTile; tsumogiri?: boolean; riichi?: boolean; called?: boolean; }
+export interface BoardMeld { type: string; tiles: TenhouTile[]; called?: TenhouTile; from?: number; }
+export interface BoardSeat {
+  name: string; score: number; riichi: boolean;
+  hand: TenhouTile[]; river: BoardRiverTile[]; melds: BoardMeld[];
+}
+export interface BoardView {
+  round: number; honba: number; sticks: number; dora: TenhouTile[]; ura: TenhouTile[];
+  seats: [BoardSeat, BoardSeat, BoardSeat, BoardSeat]; // by player index 0..3
+  resultText?: string;
+  highlight?: { seat: number; tile?: TenhouTile };
+}
+
 const miniTile = (t: TenhouTile, cls = ''): HTMLElement => tileImg(t, cls);
 
-/** Approximate concealed hand for display: haipai + draws − discards − meld tiles. */
+/** Approximate concealed hand for the editor's Kyoku: haipai + draws − discards − melds. */
 function reconstructHand(p: PlayerHand): TenhouTile[] {
   const hand = [...p.haipai];
   for (const t of p.turns) if (t.draw !== undefined) hand.push(t.draw);
   const remove = (tile: TenhouTile) => { const i = hand.indexOf(tile); if (i >= 0) hand.splice(i, 1); };
-  for (const t of p.turns) if (t.discard !== undefined) remove(t.discard);
+  for (const t of p.turns) if (t.discard !== undefined) remove(t.tsumogiri ? t.draw! : t.discard);
   for (const c of p.calls) for (const mt of c.tiles) remove(mt);
   return hand.sort((a, b) => a - b);
 }
 
-function riverEl(p: PlayerHand, seat: number): HTMLElement {
+export function kyokuToBoardView(k: Kyoku): BoardView {
+  const seats = k.players.map((p): BoardSeat => ({
+    name: p.name, score: p.startScore + p.scoreDelta, riichi: p.turns.some((t) => t.riichi),
+    hand: reconstructHand(p),
+    river: p.turns.filter((t) => t.discard !== undefined).map((t) => ({ tile: t.tsumogiri ? t.draw! : t.discard!, tsumogiri: t.tsumogiri, riichi: t.riichi, called: t.called })),
+    melds: p.calls.map((c) => ({ type: c.type, tiles: c.tiles, called: c.calledTile, from: c.fromSeat })),
+  })) as BoardView['seats'];
+  return { round: k.round, honba: k.honba, sticks: k.riichiSticks, dora: k.doraIndicators, ura: k.uraIndicators, seats, resultText: resultText(k) };
+}
+
+function calledPosition(seat: number, fromSeat: number, n: number): number {
+  const d = ((fromSeat - seat) + 4) % 4;
+  if (d === 3) return 0; if (d === 2) return 1; return n - 1;
+}
+
+function riverEl(river: BoardRiverTile[], seat: number): HTMLElement {
   const r = el('div', { class: `river riv-${POS[seat]}` });
-  for (const t of p.turns) {
-    if (t.discard === undefined) continue;
+  for (const t of river) {
     const cls = [t.riichi && 'riichi', t.tsumogiri && 'tsumogiri', t.called && 'called'].filter(Boolean).join(' ');
-    r.append(miniTile(t.discard, cls));
+    r.append(miniTile(t.tile, cls));
   }
   return r;
 }
 
-/** Position of the rotated (called) tile within a meld: the discarder's seat
- *  relative to the caller — kamicha→left, toimen→middle, shimocha→right(end). */
-function calledPosition(seat: number, fromSeat: number, n: number): number {
-  const d = ((fromSeat - seat) + 4) % 4;
-  if (d === 3) return 0;   // kamicha (left)
-  if (d === 2) return 1;   // toimen (middle)
-  return n - 1;            // shimocha (right end)
-}
-
-function meldsEl(p: PlayerHand, seat: number): HTMLElement {
+function meldsEl(melds: BoardMeld[], seat: number): HTMLElement {
   const m = el('div', { class: `melds melds-${POS[seat]}` });
-  for (const c of p.calls) {
+  for (const c of melds) {
     let cells: { t: TenhouTile; called: boolean }[] = c.tiles.map((t) => ({ t, called: false }));
-    if (c.calledTile !== undefined && c.fromSeat !== undefined) {
-      const pos = calledPosition(seat, c.fromSeat, c.tiles.length);
-      const others = [...c.tiles];
-      const ci = others.indexOf(c.calledTile);
-      if (ci >= 0) others.splice(ci, 1);
-      cells = [];
-      let oi = 0;
-      for (let k = 0; k < c.tiles.length; k++) cells.push(k === pos ? { t: c.calledTile, called: true } : { t: others[oi++], called: false });
+    if (c.called !== undefined && c.from !== undefined) {
+      const pos = calledPosition(seat, c.from, c.tiles.length);
+      const others = [...c.tiles]; const ci = others.indexOf(c.called); if (ci >= 0) others.splice(ci, 1);
+      cells = []; let oi = 0;
+      for (let k = 0; k < c.tiles.length; k++) cells.push(k === pos ? { t: c.called, called: true } : { t: others[oi++], called: false });
     }
     m.append(el('span', { class: 'meld', title: c.type }, cells.map((o) => miniTile(o.t, o.called ? 'called' : ''))));
   }
   return m;
 }
 
-/** A player's station is now just the hand (name/score moved to the centre). */
-function station(k: Kyoku, seat: number): HTMLElement {
-  const hand = reconstructHand(k.players[seat]);
-  // South (1) and West (2) read right-to-left once their tiles are rotated, so
-  // reverse their order to keep the hand ascending from the viewer's side.
-  if (seat === 1 || seat === 2) hand.reverse();
-  return el('div', { class: `station station-${POS[seat]}` }, [
-    el('div', { class: 'hand' }, hand.map((t) => miniTile(t))),
-  ]);
+function station(view: BoardView, seat: number): HTMLElement {
+  const hand = [...view.seats[seat].hand];
+  if (seat === 1 || seat === 2) hand.reverse(); // read correctly once rotated
+  return el('div', { class: `station station-${POS[seat]}` }, [el('div', { class: 'hand' }, hand.map((t) => miniTile(t)))]);
 }
 
-/** Per-seat scoreboard block shown in the centre, rotated to face its seat. */
-function scoreBlock(k: Kyoku, seat: number): HTMLElement {
-  const p = k.players[seat];
-  const isDealer = (k.round % 4) === seat;
-  const wind = WINDS[((seat - (k.round % 4)) + 4) % 4];
-  const inRiichi = p.turns.some((t) => t.riichi);
+function scoreBlock(view: BoardView, seat: number): HTMLElement {
+  const s = view.seats[seat];
+  const isDealer = (view.round % 4) === seat;
+  const wind = WINDS[((seat - (view.round % 4)) + 4) % 4];
   return el('div', { class: `sc sc-${POS[seat]}` }, [
-    el('div', { class: 'sc-head' }, [
-      el('span', { class: `wind wind-${wind}${isDealer ? ' dealer' : ''}` }, [wind]),
-      el('span', { class: 'sc-name' }, [p.name]),
-    ]),
-    el('div', { class: 'sc-pts' }, [String(p.startScore + p.scoreDelta)]),
-    ...(inRiichi ? [el('div', { class: 'stick' })] : []),
+    el('div', { class: 'sc-head' }, [el('span', { class: `wind wind-${wind}${isDealer ? ' dealer' : ''}` }, [wind]), el('span', { class: 'sc-name' }, [s.name])]),
+    el('div', { class: 'sc-pts' }, [String(s.score)]),
+    ...(s.riichi ? [el('div', { class: 'stick' })] : []),
   ]);
 }
 
-export function renderBoard(container: HTMLElement, k: Kyoku | undefined): void {
+export function renderBoardView(container: HTMLElement, view: BoardView | undefined): void {
   container.replaceChildren();
-  if (!k) { container.append(el('div', { class: 'board-empty' }, ['No hand to display'])); return; }
-
+  if (!view) { container.append(el('div', { class: 'board-empty' }, ['No hand to display'])); return; }
   const mid = el('div', { class: 'sc-mid' }, [
-    el('div', { class: 'bc-round' }, [`${roundName(k.round)}${k.honba ? ` · ${k.honba}b` : ''}`]),
-    el('div', { class: 'bc-dora' }, ['ドラ ', ...k.doraIndicators.map((t) => miniTile(t)), ...(k.uraIndicators.length ? [el('span', { class: 'ura-lab' }, ['裏']), ...k.uraIndicators.map((t) => miniTile(t))] : [])]),
-    ...(k.riichiSticks ? [el('div', { class: 'bc-sticks' }, [`供託 ${k.riichiSticks}`])] : []),
-    el('div', { class: `bc-result ${k.result.kind}` }, [resultText(k)]),
+    el('div', { class: 'bc-round' }, [`${roundName(view.round)}${view.honba ? ` · ${view.honba}b` : ''}`]),
+    el('div', { class: 'bc-dora' }, ['ドラ ', ...view.dora.map((t) => miniTile(t)), ...(view.ura.length ? [el('span', { class: 'ura-lab' }, ['裏']), ...view.ura.map((t) => miniTile(t))] : [])]),
+    ...(view.sticks ? [el('div', { class: 'bc-sticks' }, [`供託 ${view.sticks}`])] : []),
+    ...(view.resultText ? [el('div', { class: 'bc-result' }, [view.resultText])] : []),
   ]);
-  const center = el('div', { class: 'pond-center' }, [scoreBlock(k, 2), scoreBlock(k, 3), mid, scoreBlock(k, 1), scoreBlock(k, 0)]);
-
+  const center = el('div', { class: 'pond-center' }, [scoreBlock(view, 2), scoreBlock(view, 3), mid, scoreBlock(view, 1), scoreBlock(view, 0)]);
   const pond = el('div', { class: 'pond' }, [center]);
-  for (let s = 0; s < 4; s++) { pond.append(riverEl(k.players[s], s), meldsEl(k.players[s], s)); }
+  for (let s = 0; s < 4; s++) pond.append(riverEl(view.seats[s].river, s), meldsEl(view.seats[s].melds, s));
+  container.append(el('div', { class: 'board' }, [station(view, 2), station(view, 3), pond, station(view, 1), station(view, 0)]));
+}
 
-  container.append(el('div', { class: 'board' }, [
-    station(k, 2), // West (top)
-    station(k, 3), // North (left)
-    pond,
-    station(k, 1), // South (right)
-    station(k, 0), // East (bottom)
-  ]));
+/** Convenience wrapper for the editor's live board. */
+export function renderBoard(container: HTMLElement, k: Kyoku | undefined): void {
+  renderBoardView(container, k ? kyokuToBoardView(k) : undefined);
 }
 
 function resultText(k: Kyoku): string {

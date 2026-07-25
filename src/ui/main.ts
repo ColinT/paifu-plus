@@ -7,6 +7,7 @@ import { newGame, gameFromKyokus, emptyKyoku, roundName } from './state.js';
 import type { EditorState } from './state.js';
 import { renderKyoku } from './editor.js';
 import { renderBoard } from './board.js';
+import { mountReplay } from './replay.js';
 import { el, clear } from './dom.js';
 
 const state: EditorState & { streamText: string } = { game: newGame(), activeKyoku: 0, streamText: '' };
@@ -15,7 +16,18 @@ const state: EditorState & { streamText: string } = { game: newGame(), activeKyo
 const app = document.getElementById('app')!;
 const toolbarEl = el('header', { class: 'toolbar' });
 const panelsEl = el('div', { class: 'panels' });
-app.append(toolbarEl, panelsEl);
+const replayEl = el('div', { class: 'replay-root' });
+app.append(toolbarEl, panelsEl, replayEl);
+
+let mode: 'editor' | 'replay' = 'editor';
+function setMode(m: 'editor' | 'replay') {
+  mode = m;
+  panelsEl.style.display = m === 'editor' ? 'flex' : 'none';
+  replayEl.style.display = m === 'replay' ? 'block' : 'none';
+  renderToolbar();
+}
+mountReplay(replayEl, { getEditorLog: () => gameToTenhou(state.game) });
+replayEl.style.display = 'none';
 
 function panel(title: string, key: string, body: HTMLElement, opts: { collapsed?: boolean; grow?: boolean } = {}): HTMLElement {
   const sec = el('section', { class: `panel${opts.collapsed ? ' collapsed' : ''}${opts.grow ? ' grow' : ''}`, 'data-key': key });
@@ -53,6 +65,10 @@ function renderToolbar() {
   const fileInput = el('input', { type: 'file', accept: '.pdf', class: 'hidden', onChange: onImport }) as HTMLInputElement;
   toolbarEl.append(
     el('span', { class: 'brand' }, ['牌譜 → tenhou']),
+    el('div', { class: 'mode-toggle' }, [
+      el('button', { class: `btn${mode === 'editor' ? ' primary' : ''}`, onClick: () => setMode('editor') }, ['Editor']),
+      el('button', { class: `btn${mode === 'replay' ? ' primary' : ''}`, onClick: () => setMode('replay') }, ['Replay']),
+    ]),
     el('button', { class: 'btn primary', onClick: () => fileInput.click() }, ['Import PAIFUN PDF']),
     fileInput,
     el('button', { class: 'btn', onClick: () => { if (confirm('Start a new empty game? Unsaved edits will be lost.')) { state.game = newGame(); state.activeKyoku = 0; state.streamText = ''; streamInput.value = ''; renderAll(); } } }, ['New game']),
