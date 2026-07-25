@@ -38,6 +38,28 @@ describe('stream transcription DSL', () => {
     expect(diagnostics.some((d) => /missed/.test(d.message))).toBe(true);
   });
 
+  it('auto-scores a tsumo win (pinfu + menzen tsumo)', () => {
+    const s = 'e1 123456789m1234z1z 123456789p1234z 123456789s1234z 23499m456678p23s 1z 9p 8p 9s 8s 4s tsumo';
+    const { game } = parseStream(s);
+    const r = game.kyokus[0].result;
+    expect(r.kind).toBe('tsumo');
+    expect(r.winner).toBe(3);
+    expect(r.han).toBe(2);
+    expect(r.fu).toBe(20);
+    expect(r.deltas).toEqual([-700, -400, -400, 1500]);
+    expect(r.yaku?.map((y) => y.name)).toEqual(expect.arrayContaining(['平和', '門前清自摸和']));
+  });
+
+  it('computes ryuukyoku tenpai payments', () => {
+    // North is tenpai (13-tile wait), others noten; simplest: end immediately after haipai
+    const s = 'e1 123456789m1234z1z 133557799p1133s 133557799s1133m 23499m456678p23s 1z ryuukyoku';
+    const { game } = parseStream(s);
+    const r = game.kyokus[0].result;
+    expect(r.kind).toBe('ryuukyoku');
+    // exactly the tenpai seats gain; total is zero-sum
+    expect(r.deltas.reduce((a, b) => a + b, 0)).toBe(0);
+  });
+
   it('starts a new kyoku on the next round token', () => {
     const s = 'e1 1112345678999m 123456789p1234z5z 123456789s1234z5z 123456789p1234z5z 1z ryuukyoku '
             + 'e2 1112345678999m 123456789p1234z5z 123456789s1234z5z 123456789p1234z5z 1z ryuukyoku';

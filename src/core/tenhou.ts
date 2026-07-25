@@ -121,15 +121,16 @@ function resultArray(k: Kyoku): unknown[] {
   if (r.kind === 'ryuukyoku') {
     return ['流局', r.deltas];
   }
-  // 和了 (agari): [winner, from, winner, scoreString, ...yaku]
+  // 和了 (agari): [winner, from, winner, scoreString, ...yaku(飜)]
   const winner = r.winner!;
   const from = r.kind === 'tsumo' ? winner : r.loser!;
-  // NOTE: han/fu/yaku are not present in the paifun; recomputation from the
-  // final hand is a follow-up. For now emit the point value so viewers can
-  // still render the result and replay the tiles.
   const gained = r.deltas[winner];
-  const scoreStr = `${gained >= 0 ? '+' : ''}${gained}点`;
-  return ['和了', r.deltas, [winner, from, winner, scoreStr]];
+  // Prefer the scoring engine's result; fall back to the raw point delta.
+  const scoreStr = r.scoreText
+    ? (r.fu ? `${r.fu}符${r.han}飜${gained >= 0 ? gained : ''}点` : r.scoreText)
+    : `${gained >= 0 ? '+' : ''}${gained}点`;
+  const yakuStrs = (r.yaku ?? []).map((y) => `${y.name}(${y.han}飜)`);
+  return ['和了', r.deltas, [winner, from, winner, scoreStr, ...yakuStrs]];
 }
 
 export function kyokuToLog(k: Kyoku): unknown[] {

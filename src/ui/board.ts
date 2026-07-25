@@ -84,6 +84,8 @@ function resultText(k: Kyoku): string {
   const r = k.result;
   if (r.kind === 'ryuukyoku') return 'Exhaustive draw';
   const who = r.winner !== undefined ? `P${r.winner}` : '?';
-  if (r.kind === 'tsumo') return `${who} tsumo ${r.winningTile !== undefined ? tileLabel(r.winningTile) : ''}`;
-  return `${who} ron ${r.winningTile !== undefined ? tileLabel(r.winningTile) : ''}${r.loser !== undefined ? ` off P${r.loser}` : ''}`;
+  const tile = r.winningTile !== undefined ? tileLabel(r.winningTile) : '';
+  const score = r.scoreText ? ` · ${r.scoreText}` : '';
+  if (r.kind === 'tsumo') return `${who} tsumo ${tile}${score}`;
+  return `${who} ron ${tile}${r.loser !== undefined ? ` off P${r.loser}` : ''}${score}`;
 }

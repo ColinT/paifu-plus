@@ -71,6 +71,11 @@ export interface KyokuResult {
   deltas: [number, number, number, number];
   /** Seats that were tenpai at an exhaustive draw. */
   tenpai?: Seat[];
+  /** Computed scoring (from the scoring engine), when available. */
+  han?: number;
+  fu?: number;
+  yaku?: { name: string; han: number }[];
+  scoreText?: string;
 }
 
 export interface Kyoku {

@@ -25,6 +25,7 @@
 import type { Game, Kyoku, PlayerHand, Turn, Call, Seat, KyokuResult } from '../core/model.js';
 import { parseTileNotation, normalizeRed } from '../core/tiles.js';
 import type { TenhouTile } from '../core/tiles.js';
+import { scoreWin, agariDeltas, ryuukyokuDeltas, isTenpai, counts } from '../score/index.js';
 
 export interface Diagnostic {
   start: number; end: number;
@@ -321,23 +322,50 @@ export function parseStream(input: string): StreamParseResult {
     expect = 'draw';
   }
 
+  /** Map current-seat (0=E..3=N) deltas to fixed player-index order. */
+  function toFixedDeltas(cs: number[]): [number, number, number, number] {
+    const out: [number, number, number, number] = [0, 0, 0, 0];
+    for (let s = 0 as Seat; s < 4; s++) out[fixedIndex(s, round)] = cs[s];
+    return out;
+  }
+
+  function scoreAgari(tok: Tok, w: Seat, isTsumo: boolean, winningTile: TenhouTile, fromSeat: Seat): Partial<KyokuResult> {
+    const p = players![w];
+    const concealed = p.hand.slice();
+    if (isTsumo) { const i = concealed.indexOf(winningTile); if (i >= 0) concealed.splice(i, 1); }
+    const sr = scoreWin({
+      concealed, melds: p.calls.map((c) => ({ type: c.type, tiles: c.tiles })), winningTile, isTsumo,
+      seatWind: 27 + w, roundWind: 27 + Math.floor(round / 4),
+      doraIndicators: dora, uraIndicators: ura, riichi: p.riichi, rules: {},
+    });
+    if (!sr.valid) { warn(tok, 'no yaku — deltas not computed (fill in manually)'); return { deltas: [0, 0, 0, 0] }; }
+    const { deltas } = agariDeltas({ winner: w, from: isTsumo ? w : fromSeat, dealerSeat: 0, isTsumo, base: sr.base, honba, sticks });
+    return { deltas: toFixedDeltas(deltas), han: sr.han, fu: sr.fu, yaku: sr.yaku, scoreText: sr.text };
+  }
+
   function handleResult(tok: Tok, rm: RegExpExecArray) {
     if (!players) return;
     const kind = rm[1].toLowerCase();
     let result: KyokuResult;
     if (kind === 'tsumo') {
-      const w = midTurnSeat ?? turn;
-      const last = players[w].turns[players[w].turns.length - 1];
-      result = { kind: 'tsumo', winner: fixedIndex(w, round), winningTile: last?.draw, deltas: [0, 0, 0, 0] };
+      const w = (midTurnSeat ?? turn) as Seat;
+      const winTile = players[w].turns[players[w].turns.length - 1]?.draw;
+      const scored = winTile !== undefined ? scoreAgari(tok, w, true, winTile, w) : { deltas: [0, 0, 0, 0] as [number, number, number, number] };
+      result = { kind: 'tsumo', winner: fixedIndex(w, round), winningTile: winTile, deltas: [0, 0, 0, 0], ...scored };
     } else if (kind === 'ron') {
-      // winner is the current player about to act, or a seat-suffix; from = last discarder
-      const w = midTurnSeat !== null && isExpect('draw') ? turn : (midTurnSeat ?? turn);
-      result = { kind: 'ron', winner: fixedIndex(w, round), loser: lastDiscard ? fixedIndex(lastDiscard.seat, round) : undefined, winningTile: lastDiscard?.tile, deltas: [0, 0, 0, 0] };
+      const w = (midTurnSeat !== null && isExpect('draw') ? turn : (midTurnSeat ?? turn)) as Seat;
+      const winTile = lastDiscard?.tile;
+      const from = lastDiscard?.seat ?? 0 as Seat;
+      const scored = winTile !== undefined ? scoreAgari(tok, w, false, winTile, from) : { deltas: [0, 0, 0, 0] as [number, number, number, number] };
+      result = { kind: 'ron', winner: fixedIndex(w, round), loser: lastDiscard ? fixedIndex(lastDiscard.seat, round) : undefined, winningTile: winTile, deltas: [0, 0, 0, 0], ...scored };
     } else {
-      result = { kind: 'ryuukyoku', deltas: [0, 0, 0, 0] };
+      // ryuukyoku: tenpai payments from each hand's shape.
+      const tenpaiCS = ([0, 1, 2, 3] as Seat[]).map((s) => isTenpai(counts(players![s].hand), players![s].calls.length));
+      const deltas = toFixedDeltas(ryuukyokuDeltas(tenpaiCS));
+      const tenpai = ([0, 1, 2, 3] as Seat[]).filter((s) => tenpaiCS[s]).map((s) => fixedIndex(s, round));
+      result = { kind: 'ryuukyoku', deltas, tenpai };
     }
     closeKyoku(result);
-    void tok;
   }
 
   // finalize a trailing open hand
