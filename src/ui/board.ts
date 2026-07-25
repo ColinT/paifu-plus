@@ -17,6 +17,7 @@ export interface BoardMeld { type: string; tiles: TenhouTile[]; called?: TenhouT
 export interface BoardSeat {
   name: string; score: number; riichi: boolean;
   hand: TenhouTile[]; river: BoardRiverTile[]; melds: BoardMeld[];
+  drawn?: TenhouTile; // the just-drawn tile, held apart on the player's right
 }
 export interface BoardView {
   round: number; honba: number; sticks: number; dora: TenhouTile[]; ura: TenhouTile[];
@@ -38,12 +39,20 @@ function reconstructHand(p: PlayerHand): TenhouTile[] {
 }
 
 export function kyokuToBoardView(k: Kyoku): BoardView {
-  const seats = k.players.map((p): BoardSeat => ({
-    name: p.name, score: p.startScore + p.scoreDelta, riichi: p.turns.some((t) => t.riichi),
-    hand: reconstructHand(p),
-    river: p.turns.filter((t) => t.discard !== undefined).map((t) => ({ tile: t.tsumogiri ? t.draw! : t.discard!, tsumogiri: t.tsumogiri, riichi: t.riichi, called: t.called })),
-    melds: p.calls.map((c) => ({ type: c.type, tiles: c.tiles, called: c.calledTile, from: c.fromSeat })),
-  })) as BoardView['seats'];
+  const seats = k.players.map((p, i): BoardSeat => {
+    const hand = reconstructHand(p);
+    let drawn: TenhouTile | undefined;
+    // On a tsumo win the winning tile is held apart on the right.
+    if (k.result.kind === 'tsumo' && k.result.winner === i && k.result.winningTile !== undefined) {
+      drawn = k.result.winningTile; const idx = hand.indexOf(drawn); if (idx >= 0) hand.splice(idx, 1);
+    }
+    return {
+      name: p.name, score: p.startScore + p.scoreDelta, riichi: p.turns.some((t) => t.riichi),
+      hand, drawn,
+      river: p.turns.filter((t) => t.discard !== undefined).map((t) => ({ tile: t.tsumogiri ? t.draw! : t.discard!, tsumogiri: t.tsumogiri, riichi: t.riichi, called: t.called })),
+      melds: p.calls.map((c) => ({ type: c.type, tiles: c.tiles, called: c.calledTile, from: c.fromSeat })),
+    };
+  }) as BoardView['seats'];
   return { round: k.round, honba: k.honba, sticks: k.riichiSticks, dora: k.doraIndicators, ura: k.uraIndicators, seats, resultText: resultText(k) };
 }
 
@@ -77,9 +86,12 @@ function meldsEl(melds: BoardMeld[], seat: number): HTMLElement {
 }
 
 function station(view: BoardView, seat: number): HTMLElement {
-  const hand = [...view.seats[seat].hand];
+  const s = view.seats[seat];
+  const hand = [...s.hand];
   if (seat === 1 || seat === 2) hand.reverse(); // read correctly once rotated
-  return el('div', { class: `station station-${POS[seat]}` }, [el('div', { class: 'hand' }, hand.map((t) => miniTile(t)))]);
+  const tiles: (HTMLElement)[] = hand.map((t) => miniTile(t));
+  if (s.drawn !== undefined) { tiles.push(el('span', { class: 'hand-gap' }), miniTile(s.drawn, 'drawn')); }
+  return el('div', { class: `station station-${POS[seat]}` }, [el('div', { class: 'hand' }, tiles)]);
 }
 
 function scoreBlock(view: BoardView, seat: number): HTMLElement {

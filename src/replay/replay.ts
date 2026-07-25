@@ -11,7 +11,7 @@ import type { TenhouTile } from '../core/tiles.js';
 
 export interface RiverTile { tile: TenhouTile; tsumogiri: boolean; riichi: boolean; called: boolean; }
 export interface ReplayMeld { type: string; tiles: TenhouTile[]; called?: TenhouTile; from?: number; }
-export interface ReplayPlayer { hand: TenhouTile[]; river: RiverTile[]; melds: ReplayMeld[]; score: number; riichi: boolean; }
+export interface ReplayPlayer { hand: TenhouTile[]; river: RiverTile[]; melds: ReplayMeld[]; score: number; riichi: boolean; drawn: TenhouTile | null; }
 
 export type ActionType = 'haipai' | 'draw' | 'discard' | 'call' | 'kan' | 'end';
 export interface Step {
@@ -62,7 +62,7 @@ function removeOne(hand: TenhouTile[], tile: TenhouTile) {
 }
 
 const clone = (p: ReplayPlayer): ReplayPlayer => ({
-  hand: [...p.hand], river: p.river.map((r) => ({ ...r })), melds: p.melds.map((m) => ({ ...m, tiles: [...m.tiles] })), score: p.score, riichi: p.riichi,
+  hand: [...p.hand], river: p.river.map((r) => ({ ...r })), melds: p.melds.map((m) => ({ ...m, tiles: [...m.tiles] })), score: p.score, riichi: p.riichi, drawn: p.drawn,
 });
 
 function simulateKyoku(entry: any[]): KyokuReplay {
@@ -75,7 +75,7 @@ function simulateKyoku(entry: any[]): KyokuReplay {
   const result = entry[16];
 
   const P: ReplayPlayer[] = Array.from({ length: 4 }, (_, p) => ({
-    hand: [...haipai[p]].sort((a, b) => a - b), river: [], melds: [], score: scores[p], riichi: false,
+    hand: [...haipai[p]].sort((a, b) => a - b), river: [], melds: [], score: scores[p], riichi: false, drawn: null,
   }));
   const dp = [0, 0, 0, 0], sp = [0, 0, 0, 0];
   const dealer = round % 4;
@@ -103,11 +103,11 @@ function simulateKyoku(entry: any[]): KyokuReplay {
       for (const t of fromHand) removeOne(P[current].hand, t);
       P[current].melds.push({ type: meld.type, tiles: meld.tiles, called: meld.called, from: lastDiscarder >= 0 ? lastDiscarder : undefined });
       dp[current]++;
-      lastDraw = null;
+      lastDraw = null; P[current].drawn = null;
       snap('call', current, meld.called, meld.type);
     } else {
       P[current].hand.push(d); P[current].hand.sort((a, b) => a - b);
-      lastDraw = d; dp[current]++;
+      lastDraw = d; dp[current]++; P[current].drawn = d;
       snap('draw', current, d, 'Draw');
     }
 
@@ -134,6 +134,7 @@ function simulateKyoku(entry: any[]): KyokuReplay {
     if (riichi) { P[current].riichi = true; P[current].score -= 1000; }
     sp[current]++;
     lastDiscarder = current;
+    P[current].drawn = null; // turn complete, no tile held apart
     snap('discard', current, tile, riichi ? 'Riichi' : tsumogiri ? 'Tsumogiri' : 'Discard');
 
     // ---- did someone call this discard? ----

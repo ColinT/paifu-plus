@@ -29,12 +29,16 @@ function resultTextFromLog(result: any): string | undefined {
 
 function stepToBoardView(g: ReplayGame, k: KyokuReplay, step: Step): BoardView {
   const atEnd = step.action === 'end';
-  const seats = step.players.map((p, i) => ({
-    name: g.names[i] ?? `P${i + 1}`, score: p.score, riichi: p.riichi,
-    hand: [...p.hand].sort((a, b) => a - b),
-    river: p.river.map((r) => ({ tile: r.tile, tsumogiri: r.tsumogiri, riichi: r.riichi, called: r.called })),
-    melds: p.melds.map((m) => ({ type: m.type, tiles: m.tiles, called: m.called, from: m.from })),
-  })) as BoardView['seats'];
+  const seats = step.players.map((p, i) => {
+    const hand = [...p.hand].sort((a, b) => a - b);
+    let drawn: number | undefined;
+    if (p.drawn !== null) { drawn = p.drawn; const idx = hand.indexOf(p.drawn); if (idx >= 0) hand.splice(idx, 1); }
+    return {
+      name: g.names[i] ?? `P${i + 1}`, score: p.score, riichi: p.riichi, hand, drawn,
+      river: p.river.map((r) => ({ tile: r.tile, tsumogiri: r.tsumogiri, riichi: r.riichi, called: r.called })),
+      melds: p.melds.map((m) => ({ type: m.type, tiles: m.tiles, called: m.called, from: m.from })),
+    };
+  }) as BoardView['seats'];
   return { round: k.round, honba: k.honba, sticks: k.sticks, dora: k.dora, ura: atEnd ? k.ura : [], seats, resultText: atEnd ? resultTextFromLog(k.result) : undefined, highlight: { seat: step.active, tile: step.tile } };
 }
 
