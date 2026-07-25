@@ -7,6 +7,7 @@ import type { BoardView, BoardResult } from './board.js';
 import { roundName } from './state.js';
 import { tileLabel } from '../core/tileDisplay.js';
 import { el, clear } from './dom.js';
+import { icon } from './icon.js';
 import { logId, loadComments, saveComments, shareUrl } from './share.js';
 import type { Comment, SharePayload } from './share.js';
 
@@ -133,16 +134,16 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
     const commentCount = state.comments.filter((c) => c.ky === state.ky).length;
     controls.append(
       el('div', { class: 'replay-buttons' }, [
-        el('button', { class: 'btn', title: 'Start', onClick: () => { state.step = 0; stop(); render(); } }, ['⏮']),
-        el('button', { class: 'btn', title: 'Previous', onClick: () => { state.step = Math.max(0, state.step - 1); stop(); render(); } }, ['◀']),
-        el('button', { class: 'btn primary', onClick: () => (state.playing ? stop() : play()) }, [state.playing ? '⏸' : '▶']),
-        el('button', { class: 'btn', title: 'Next', onClick: () => step(1) }, ['▶▎']),
-        el('button', { class: 'btn', title: 'End', onClick: () => { state.step = k.steps.length - 1; stop(); render(); } }, ['⏭']),
+        el('button', { class: 'btn icon', title: 'Start', onClick: () => { state.step = 0; stop(); render(); } }, [icon('first_page')]),
+        el('button', { class: 'btn icon', title: 'Previous', onClick: () => { state.step = Math.max(0, state.step - 1); stop(); render(); } }, [icon('navigate_before')]),
+        el('button', { class: 'btn primary icon', title: state.playing ? 'Pause' : 'Play', onClick: () => (state.playing ? stop() : play()) }, [icon(state.playing ? 'pause' : 'play_arrow')]),
+        el('button', { class: 'btn icon', title: 'Next', onClick: () => step(1) }, [icon('navigate_next')]),
+        el('button', { class: 'btn icon', title: 'End', onClick: () => { state.step = k.steps.length - 1; stop(); render(); } }, [icon('last_page')]),
         el('span', { class: 'replay-count' }, [`${state.step + 1} / ${k.steps.length}`]),
         el('span', { class: 'spacer' }),
-        el('button', { class: 'btn', title: 'Previous comment', onClick: () => gotoComment(-1) }, ['💬◀']),
-        el('button', { class: 'btn', title: 'Next comment', onClick: () => gotoComment(1) }, [`💬▶${commentCount ? ` ${commentCount}` : ''}`]),
-        el('button', { class: 'btn', title: 'Copy a shareable link (log + comments)', onClick: copyShareLink }, ['🔗 Share']),
+        el('button', { class: 'btn icon', title: 'Previous comment', onClick: () => gotoComment(-1) }, [icon('navigate_before'), icon('chat_bubble')]),
+        el('button', { class: 'btn icon', title: 'Next comment', onClick: () => gotoComment(1) }, [icon('chat_bubble'), icon('navigate_next'), ...(commentCount ? [el('span', { class: 'badge' }, [String(commentCount)])] : [])]),
+        el('button', { class: 'btn', title: 'Copy a shareable link (log + comments)', onClick: copyShareLink }, [icon('share'), ' Share']),
       ]),
       slider,
       el('div', { class: 'replay-label' }, [stepLabel(state.game!, k.steps[state.step])]),
