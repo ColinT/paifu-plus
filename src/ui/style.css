@@ -40,14 +40,15 @@ button, input, select { font: inherit; color: inherit; }
 /* board: stations on the four sides, a central pond of rivers + melds */
 .board-wrap { display: flex; justify-content: center; }
 .board { display: grid; grid-template-columns: 1.1fr 2fr 1.1fr; grid-template-rows: 1fr 2.2fr 1fr; gap: 4px; width: 100%; max-width: 1100px; aspect-ratio: 1 / 0.92; background: #14351f; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
-.station { background: rgba(0,0,0,.18); border-radius: 6px; padding: 6px; display: flex; flex-direction: column; gap: 3px; overflow: hidden; align-self: center; }
+.station { background: rgba(0,0,0,.18); border-radius: 6px; padding: 6px; display: flex; flex-direction: column; gap: 3px; overflow: visible; align-self: center; }
 .station-top { grid-area: 1 / 2; } .station-bottom { grid-area: 3 / 2; }
 .station-left { grid-area: 2 / 1; } .station-right { grid-area: 2 / 3; }
 .seat-head { display: flex; align-items: center; gap: 5px; font-size: 12px; }
 .seat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
 .seat-score { color: #cfe; font-variant-numeric: tabular-nums; }
 .wind.dealer { outline: 2px solid #ffd66b; }
-.station .hand { display: flex; flex-wrap: wrap; gap: 1px; max-width: 150px; }
+.station .hand { display: flex; flex-wrap: nowrap; gap: 1px; }
+.station-left .hand, .station-right .hand { flex-direction: column; }
 
 .pond { grid-area: 2 / 2; display: grid; grid-template-columns: 1fr 1.3fr 1fr; grid-template-rows: 1fr 1.3fr 1fr; place-items: center; gap: 2px; }
 .pond-center { grid-area: 2 / 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center; }
