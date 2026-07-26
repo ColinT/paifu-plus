@@ -2,7 +2,8 @@
  *  stable id for keying locally-stored comments. No backend. */
 
 export interface Comment { ky: number; step: number; text: string; }
-export interface SharePayload { log: unknown; comments?: Comment[] }
+/** `pos` opens the shared link at a specific kyoku + step (else it starts at 0). */
+export interface SharePayload { log: unknown; comments?: Comment[]; pos?: { ky: number; step: number } }
 
 function b64urlEncode(str: string): string {
   const bytes = new TextEncoder().encode(str);

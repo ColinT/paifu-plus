@@ -74,6 +74,12 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
 
   root.append(inputPanel, view);
 
+  // Close the Share dropdown when clicking outside it.
+  document.addEventListener('click', (e) => {
+    const dd = controls.querySelector('.share-dd') as HTMLDetailsElement | null;
+    if (dd?.open && !dd.contains(e.target as Node)) dd.open = false;
+  });
+
   function loadLog(log: any, extraComments?: Comment[]) {
     if (!log || !Array.isArray(log.log)) { alert('Not a tenhou/6 log (missing "log" array).'); return; }
     try { state.game = buildReplay(log); } catch (e) { alert('Could not replay: ' + (e as Error).message); return; }
@@ -92,7 +98,14 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
     try { log = JSON.parse(text); } catch { alert('Not valid JSON.'); return; }
     loadLog(log);
   }
-  function loadShared(payload: SharePayload) { loadLog(payload.log, payload.comments); }
+  function loadShared(payload: SharePayload) {
+    loadLog(payload.log, payload.comments);
+    if (payload.pos && state.game) {
+      state.ky = Math.max(0, Math.min(payload.pos.ky, state.game.kyokus.length - 1));
+      state.step = Math.max(0, payload.pos.step);
+      stop(); render(); // render clamps step to the kyoku length
+    }
+  }
 
   const commentsAt = (ky: number, step: number) => state.comments.filter((c) => c.ky === ky && c.step === step);
   function addComment(text: string) {
@@ -139,11 +152,11 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
         el('button', { class: 'btn primary icon', title: state.playing ? 'Pause' : 'Play', onClick: () => (state.playing ? stop() : play()) }, [icon(state.playing ? 'pause' : 'play_arrow')]),
         el('button', { class: 'btn icon', title: 'Next', onClick: () => step(1) }, [icon('navigate_next')]),
         el('button', { class: 'btn icon', title: 'End', onClick: () => { state.step = k.steps.length - 1; stop(); render(); } }, [icon('last_page')]),
-        el('span', { class: 'replay-count' }, [`${state.step + 1} / ${k.steps.length}`]),
+        el('span', { class: 'replay-count' }, [stepInput(k), ` / ${k.steps.length}`]),
         el('span', { class: 'spacer' }),
         el('button', { class: 'btn icon', title: 'Previous comment', onClick: () => gotoComment(-1) }, [icon('navigate_before'), icon('chat_bubble')]),
         el('button', { class: 'btn icon', title: 'Next comment', onClick: () => gotoComment(1) }, [icon('chat_bubble'), icon('navigate_next'), ...(commentCount ? [el('span', { class: 'badge' }, [String(commentCount)])] : [])]),
-        el('button', { class: 'btn', title: 'Copy a shareable link (log + comments)', onClick: copyShareLink }, [icon('share'), ' Share']),
+        shareDropdown(),
       ]),
       slider,
       el('div', { class: 'replay-label' }, stepLabel(state.game!, k.steps[state.step])),
@@ -162,9 +175,34 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
     return box;
   }
 
-  async function copyShareLink() {
-    const url = shareUrl({ log: state.log, comments: state.comments });
-    try { await navigator.clipboard.writeText(url); flash('Share link copied'); }
+  /** Editable step number (1-indexed); jump on Enter/blur. */
+  function stepInput(k: KyokuReplay): HTMLInputElement {
+    const inp = el('input', {
+      type: 'number', min: '1', max: String(k.steps.length), value: String(state.step + 1), class: 'step-input',
+      title: 'Jump to step', onFocus: (e: Event) => (e.target as HTMLInputElement).select(),
+      onChange: (e: Event) => {
+        const v = Number((e.target as HTMLInputElement).value);
+        if (Number.isFinite(v)) { state.step = Math.max(0, Math.min(v - 1, k.steps.length - 1)); stop(); render(); }
+      },
+    }) as HTMLInputElement;
+    return inp;
+  }
+
+  function shareDropdown(): HTMLElement {
+    const dd = el('details', { class: 'share-dd' }, [
+      el('summary', { class: 'btn has-icon', title: 'Copy a shareable link (log + comments)' }, [icon('share'), 'Share']),
+      el('div', { class: 'share-menu' }, [
+        el('button', { class: 'menu-item', onClick: () => { copyShare(false); (dd as HTMLDetailsElement).open = false; } }, [icon('share'), 'Copy link (from the start)']),
+        el('button', { class: 'menu-item', onClick: () => { copyShare(true); (dd as HTMLDetailsElement).open = false; } }, [icon('share'), `Copy link to step ${state.step + 1}`]),
+      ]),
+    ]);
+    return dd;
+  }
+
+  async function copyShare(atStep: boolean) {
+    const payload = { log: state.log, comments: state.comments, ...(atStep ? { pos: { ky: state.ky, step: state.step } } : {}) };
+    const url = shareUrl(payload);
+    try { await navigator.clipboard.writeText(url); flash(atStep ? `Link to step ${state.step + 1} copied` : 'Share link copied'); }
     catch { prompt('Copy this share link:', url); }
   }
   function flash(msg: string) { const f = el('div', { class: 'flash' }, [msg]); document.body.append(f); setTimeout(() => f.remove(), 1600); }
