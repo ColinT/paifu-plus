@@ -22,6 +22,32 @@ export type PaifuLang = 'en' | 'ja';
 
 const WINDS_JA = ['東', '南', '西', '北'];
 const WINDS_EN = ['East', 'South', 'West', 'North'];
+const INK = '#111';
+
+/** Position of the rotated (called) tile in a meld, by the discarder's seat
+ *  relative to the caller: kamicha → left, toimen → middle, shimocha → right. */
+function calledPosition(seat: number, fromSeat: number, n: number): number {
+  const d = ((fromSeat - seat) + 4) % 4;
+  if (d === 3) return 0;
+  if (d === 2) return 1;
+  return n - 1;
+}
+
+/** Meld tiles with the right tile(s) rotated: one for chi/pon, two for an
+ *  open/added kan (minkan/kakan), none for a concealed kan (ankan). */
+function meldCells(call: PlayerHand['calls'][number], callerSeat: number): { t: TenhouTile; landscape: boolean }[] {
+  const n = call.tiles.length;
+  if (call.type === 'ankan' || call.fromSeat === undefined) return call.tiles.map((t) => ({ t, landscape: false }));
+  const rot = call.type === 'daiminkan' || call.type === 'kakan' ? 2 : 1;
+  const pos = Math.min(calledPosition(callerSeat, call.fromSeat, n), n - rot);
+  const others = [...call.tiles];
+  if (call.calledTile !== undefined) { const i = others.indexOf(call.calledTile); if (i >= 0) others.splice(i, 1); }
+  const called = call.calledTile ?? call.tiles[0];
+  const cells: { t: TenhouTile; landscape: boolean }[] = [];
+  let oi = 0;
+  for (let k = 0; k < n; k++) cells.push(k >= pos && k < pos + rot ? { t: called, landscape: true } : { t: others[oi++] ?? called, landscape: false });
+  return cells;
+}
 
 interface Labels {
   haipai: string; tsumo: string; sutehai: string; final: string;
@@ -132,7 +158,7 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
   };
   const tile = async (t: TenhouTile, landscape = false) => embed(await tileDataUrl(t, landscape));
   const textCache = new Map<string, { img: PDFImage; aspect: number }>();
-  const text = async (str: string, px: number, color = '#1a1a1a', bold = false) => {
+  const text = async (str: string, px: number, color = INK, bold = false) => {
     const key = `${px}|${color}|${bold ? 'b' : ''}|${str}`;
     let e = textCache.get(key);
     if (!e) { const { url, aspect } = textDataUrl(str, px, color, bold); e = { img: await embed(url), aspect }; textCache.set(key, e); }
@@ -179,19 +205,18 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
     // Compute a tile size that fits the widest row and four bands on the page.
     const labelW = 46, rowGap = 3, bandGap = 10, headerH = 13;
     const rowsOf = (p: PlayerHand) => {
-      const turns = p.turns;
-      const draws = turns.length;                       // ツモ cells (incl. ↓ / gaps)
-      const disc = turns.filter((t) => t.discard !== undefined).length;
-      const final = reconstructHand(p).length + p.calls.reduce((s, c) => s + c.tiles.length, 0);
+      const draws = p.turns.length;                       // ツモ cells (incl. ↓ / gaps)
+      const disc = p.turns.filter((t) => t.discard !== undefined).length;
+      const final = reconstructHand(p).length + p.calls.reduce((s, c) => s + c.tiles.length + 1, 0) + 3;
       return Math.max(p.haipai.length, draws, disc, final);
     };
     const maxCells = Math.max(1, ...k.players.map(rowsOf));
     const availRowW = CW - labelW;
     let tileW = Math.min(20, availRowW / maxCells);
     let tileH = tileW / 0.75;
-    // height budget: header block (~34) + 4 bands
+    // height budget: header block (~34) + 4 bands (each with a riichi-label strip)
     const budget = (PH - 2 * M) - 40;
-    const bandH = () => headerH + 4 * (tileH + rowGap);
+    const bandH = () => headerH + 8 + 4 * (tileH + rowGap);
     while (bandH() * 4 + bandGap * 3 > budget && tileH > 8) { tileH -= 0.5; tileW = tileH * 0.75; }
 
     // Players in current-seat order E,S,W,N (fixed index (round+seat)%4).
@@ -214,19 +239,26 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
       if (marker) await drawText(marker, hx, yy, 10, isLoser ? '#c51405' : '#1668c5', true);
       yy -= headerH;
 
-      const rowLabel = async (lab: string) => { await drawText(lab, M, yy - (tileH - 9) / 2, 9, '#555'); };
-      const placeTiles = async (cells: { t?: TenhouTile; landscape?: boolean; arrow?: boolean }[]) => {
+      const rowLabel = async (lab: string) => { await drawText(lab, M, yy - (tileH - 9) / 2, 9, INK); };
+      const placeTiles = async (cells: { t?: TenhouTile; landscape?: boolean; arrow?: boolean; label?: string }[], labelH = 0) => {
         let x = M + labelW;
         for (const c of cells) {
-          if (c.arrow) { await drawText('↓', x + tileW * 0.28, yy - (tileH - 10) / 2, 10, '#888'); x += tileW + 1; continue; }
+          if (c.arrow) {
+            const ap = tileH * 0.66; const e = await text('↓', ap, INK, true); const aw = ap * e.aspect;
+            drawImgTL(e.img, x + (tileW - aw) / 2, yy - (tileH - ap) / 2, aw, ap);
+            x += tileW + 1; continue;
+          }
           if (c.t === undefined) { x += tileW + 1; continue; }
           const ls = !!c.landscape;
           const w = ls ? tileH : tileW, h = ls ? tileW : tileH;
-          const img = await tile(c.t, ls);
-          drawImgTL(img, x, yy - (ls ? (tileH - h) / 2 : 0), w, h);
+          drawImgTL(await tile(c.t, ls), x, yy - (ls ? (tileH - h) / 2 : 0), w, h);
+          if (c.label && labelH) { const lp = labelH; const le = await text(c.label, lp, INK, true); const lw = lp * le.aspect; drawImgTL(le.img, x + (w - lw) / 2, yy + labelH, lw, lp); }
           x += w + 1;
         }
       };
+      const winTile = win.kind === 'ryuukyoku' ? undefined
+        : win.wins?.length ? win.wins.find((w) => w.winner === p.seat)?.winningTile
+        : win.winner === p.seat ? win.winningTile : undefined;
 
       // 配牌
       await rowLabel(L.haipai);
@@ -238,20 +270,21 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
       await placeTiles(p.turns.map((t) => t.tsumogiri ? { arrow: true } : t.draw !== undefined ? { t: t.draw } : {}));
       yy -= tileH + rowGap;
 
-      // 捨牌 (discards; riichi tile laid sideways)
+      // 捨牌 (discards; riichi denoted by a ﾘｰﾁ label, not by rotation)
+      yy -= 8; // strip above the tiles for riichi labels
       await rowLabel(L.sutehai);
       await placeTiles(p.turns.filter((t) => t.discard !== undefined).map((t) => ({
-        t: t.tsumogiri ? t.draw! : t.discard!, landscape: !!t.riichi,
-      })));
+        t: t.tsumogiri ? t.draw! : t.discard!, label: t.riichi ? L.riichi : undefined,
+      })), 8);
       yy -= tileH + rowGap;
 
-      // 最終形 (final concealed shape + melds; called tile sideways)
+      // 最終形 (concealed shape + melds; the winner's winning tile apart on the right)
       await rowLabel(L.final);
-      const finalCells: { t?: TenhouTile; landscape?: boolean }[] = reconstructHand(p).map((t) => ({ t }));
-      for (const c of p.calls) {
-        finalCells.push({});
-        for (const mt of c.tiles) finalCells.push({ t: mt, landscape: c.calledTile !== undefined && mt === c.calledTile });
-      }
+      const concealed = reconstructHand(p);
+      if (isWinner && win.kind === 'tsumo' && winTile !== undefined) { const i = concealed.indexOf(winTile); if (i >= 0) concealed.splice(i, 1); }
+      const finalCells: { t?: TenhouTile; landscape?: boolean }[] = concealed.map((t) => ({ t }));
+      for (const c of p.calls) { finalCells.push({}); finalCells.push(...meldCells(c, p.seat)); }
+      if (isWinner && winTile !== undefined) { finalCells.push({}); finalCells.push({ t: winTile }); }
       await placeTiles(finalCells);
       yy -= tileH + rowGap;
 
