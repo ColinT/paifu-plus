@@ -17,9 +17,11 @@ import { dirname, join } from 'node:path';
 const DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'assets', 'tiles');
 const AKA = '#ce1914';
 
-// Every plain tile except the fives (aka fives use the native 51/52/53 art).
+// Every plain tile, fives included: the aka five is made from the plain five
+// (not the native red-five art, which has its own pip baked in) so it gets a
+// single, consistent CSS pip like the other aka tiles.
 const codes = [];
-for (const base of [10, 20, 30]) for (let r = 1; r <= 9; r++) if (r !== 5) codes.push(base + r);
+for (const base of [10, 20, 30]) for (let r = 1; r <= 9; r++) codes.push(base + r);
 for (let h = 1; h <= 7; h++) codes.push(40 + h);
 
 const isWhite = (hex) => /^f{2}f{2}f{2}$/i.test(hex) || /^fff$/i.test(hex);
