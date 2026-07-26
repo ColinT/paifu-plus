@@ -8,15 +8,20 @@ import { tileLabel } from '../core/tileDisplay.js';
 
 export function tileImg(t: TenhouTile, cls = ''): HTMLElement {
   const outer = document.createElement('span');
-  // Arbitrary aka (+100) has no art: render the plain face and mark it .aka
-  // so CSS tints it red and adds an accessibility dot.
-  const aka = t >= 100 ? 'aka ' : '';
-  outer.className = `bt ${aka}${cls}`.trim();
+  // Arbitrary aka (+100) has no art: render the plain tile body and re-colour
+  // the symbol solid red by masking (see .bt.aka in the CSS), plus a dot.
+  const aka = t >= 100;
+  outer.className = `bt ${aka ? 'aka ' : ''}${cls}`.trim();
   outer.title = tileLabel(t);
   const inner = document.createElement('i');
   inner.className = 'tf';
   const face = tileFaceUrl(t);
-  inner.style.backgroundImage = face ? `url(${face}), url(${frontUrl})` : `url(${frontUrl})`;
+  if (aka) {
+    inner.style.backgroundImage = `url(${frontUrl})`;          // tile body only
+    if (face) inner.style.setProperty('--face', `url(${face})`); // symbol shape → CSS mask
+  } else {
+    inner.style.backgroundImage = face ? `url(${face}), url(${frontUrl})` : `url(${frontUrl})`;
+  }
   outer.append(inner);
   return outer;
 }

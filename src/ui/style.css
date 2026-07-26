@@ -158,11 +158,17 @@ button, input, select { font: inherit; color: inherit; }
   border: 1px solid rgba(255, 255, 255, .3); border-radius: 12%;
   background: repeating-linear-gradient(45deg, rgba(0,0,0,.18) 0 3px, rgba(255,255,255,.05) 3px 6px);
 }
-/* Aka dora on a non-five tile: no dedicated art, so tint the face red and add a
-   red dot (top-right of the outer box, unaffected by the .tf rotation/filter)
-   as an accessibility marker. */
+/* Aka dora on a non-five tile: no dedicated art, so keep the plain tile body and
+   paint the symbol solid red by clipping a red fill to the face SVG (its shape
+   comes in as --face). A red dot on the outer box is the accessibility marker.
+   #d71e1e is the red used by the tile set's own red-five art. */
 .bt.aka { position: relative; }
-.bt.aka .tf { filter: sepia(1) saturate(5) hue-rotate(-32deg) brightness(1.02); }
+.bt.aka .tf { position: relative; background-size: contain; }
+.bt.aka .tf::before {
+  content: ''; position: absolute; inset: 0; background-color: #d71e1e;
+  -webkit-mask: var(--face) center / 74% no-repeat;
+  mask: var(--face) center / 74% no-repeat;
+}
 .bt.aka::after {
   content: ''; position: absolute; top: 6%; right: 6%; width: 26%; height: 26%;
   max-width: 8px; max-height: 8px; min-width: 4px; min-height: 4px;
