@@ -158,6 +158,17 @@ button, input, select { font: inherit; color: inherit; }
   border: 1px solid rgba(255, 255, 255, .3); border-radius: 12%;
   background: repeating-linear-gradient(45deg, rgba(0,0,0,.18) 0 3px, rgba(255,255,255,.05) 3px 6px);
 }
+/* Aka dora on a non-five tile: no dedicated art, so tint the face red and add a
+   red dot (top-right of the outer box, unaffected by the .tf rotation/filter)
+   as an accessibility marker. */
+.bt.aka { position: relative; }
+.bt.aka .tf { filter: sepia(1) saturate(5) hue-rotate(-32deg) brightness(1.02); }
+.bt.aka::after {
+  content: ''; position: absolute; top: 6%; right: 6%; width: 26%; height: 26%;
+  max-width: 8px; max-height: 8px; min-width: 4px; min-height: 4px;
+  border-radius: 50%; background: #e01e2b; box-shadow: 0 0 0 1px rgba(255, 255, 255, .85); pointer-events: none;
+}
+
 .board-empty { color: var(--muted); padding: 30px; }
 
 .brand { font-weight: 700; letter-spacing: .3px; margin-right: 6px; }
@@ -190,6 +201,9 @@ button, input, select { font: inherit; color: inherit; }
 .paste-json { width: 100%; box-sizing: border-box; min-height: 96px; resize: vertical; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); padding: 8px; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
 .paste-json:focus { border-color: var(--accent); outline: none; }
 .export-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dialog-warning { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.45;
+  color: #ffd98a; background: rgba(224, 158, 40, .12); border: 1px solid rgba(224, 158, 40, .4); border-radius: 8px; padding: 9px 11px; }
+.dialog-warning .mi { width: 18px; height: 18px; flex: 0 0 auto; fill: #ffcf6b; margin-top: 1px; }
 
 .btn.link { display: inline-flex; align-items: center; }
 .btn.icon { display: inline-flex; align-items: center; justify-content: center; gap: 3px; padding: 6px 9px; }

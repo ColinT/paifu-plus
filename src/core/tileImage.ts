@@ -21,5 +21,6 @@ for (const [path, url] of Object.entries(mods)) {
 }
 
 export const frontUrl = front;
-/** URL of the face symbol for a tenhou tile code (red fives have their own art). */
-export function tileFaceUrl(t: TenhouTile): string | undefined { return byCode[t]; }
+/** URL of the face symbol for a tenhou tile code (red fives have their own art;
+ *  arbitrary aka tiles use the plain face and are tinted red in CSS). */
+export function tileFaceUrl(t: TenhouTile): string | undefined { return byCode[t >= 100 ? t - 100 : t]; }

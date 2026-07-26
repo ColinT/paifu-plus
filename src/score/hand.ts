@@ -14,8 +14,9 @@ import type { TenhouTile } from '../core/tiles.js';
 
 export const MAN = 0, PIN = 9, SOU = 18, HONOR = 27;
 
-/** tenhou code → 34-index (reds normalized to their plain five). */
+/** tenhou code → 34-index (aka stripped: reds → plain five, +100 aka → plain). */
 export function toIndex(t: TenhouTile): number {
+  if (t >= 100) t -= 100;
   if (t === 51) return MAN + 4;
   if (t === 52) return PIN + 4;
   if (t === 53) return SOU + 4;
@@ -50,9 +51,9 @@ export function counts(tiles: TenhouTile[]): number[] {
   return c;
 }
 
-/** Count aka fives among tiles. */
+/** Count aka dora among tiles (red fives and aka-on-any-tile). */
 export function akaCount(tiles: TenhouTile[]): number {
-  return tiles.filter((t) => t === 51 || t === 52 || t === 53).length;
+  return tiles.filter((t) => t === 51 || t === 52 || t === 53 || t >= 100).length;
 }
 
 /** The dora tile produced by an indicator (next in sequence, wrapping). */

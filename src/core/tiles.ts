@@ -10,6 +10,12 @@
  *
  * These integers are exactly what appears in the tenhou log arrays, so the
  * emitter can use them directly.
+ *
+ * PaifuPlus additionally supports aka dora on ANY tile (a house rule tenhou's
+ * format can't express). Such a tile is encoded as its plain code + 100
+ * (e.g. 147 = aka chun, 113 = aka 3m); aka fives keep the native 51/52/53.
+ * The +100 codes flow through as opaque numbers and are stripped to the plain
+ * tile only at the tenhou-JSON boundary.
  */
 
 export type Suit = 'm' | 'p' | 's' | 'z';
@@ -36,14 +42,34 @@ export function isRedFive(t: TenhouTile): boolean {
   return t === 51 || t === 52 || t === 53;
 }
 
-/** Normalize a red five to its plain-5 code (51 -> 15, 52 -> 25, 53 -> 35). */
+/** True for any aka dora: a red five (51/52/53) or an aka on another tile (+100). */
+export function isAka(t: TenhouTile): boolean {
+  return t === 51 || t === 52 || t === 53 || t >= 100;
+}
+
+/** The aka variant of a plain tile: a five → its native red-five code, any other
+ *  tile → plain code + 100. Idempotent on tiles that are already aka. */
+export function makeAka(code: TenhouTile): TenhouTile {
+  if (code === 15 || code === 51) return 51;
+  if (code === 25 || code === 52) return 52;
+  if (code === 35 || code === 53) return 53;
+  return code >= 100 ? code : code + 100;
+}
+
+/** Strip any aka marking to the plain tile code (51 -> 15, 147 -> 47). */
 export function normalizeRed(t: TenhouTile): TenhouTile {
+  if (t >= 100) return t - 100;
   switch (t) {
     case 51: return 15;
     case 52: return 25;
     case 53: return 35;
     default: return t;
   }
+}
+
+/** Drop only arbitrary (+100) aka, keeping native red-fives — for tenhou export. */
+export function stripAka(t: TenhouTile): TenhouTile {
+  return t >= 100 ? t - 100 : t;
 }
 
 /** The dora tile shown by an indicator (next in sequence, wrapping):
@@ -68,8 +94,9 @@ export function doraToIndicator(t: TenhouTile): TenhouTile {
 
 const HONOR_NAMES = ['', 'E', 'S', 'W', 'N', 'haku', 'hatsu', 'chun'];
 
-/** Human-readable label, e.g. 15 -> "5m", 51 -> "0m", 41 -> "E". */
+/** Human-readable label, e.g. 15 -> "5m", 51 -> "0m", 41 -> "E", 147 -> "aka chun". */
 export function tileLabel(t: TenhouTile): string {
+  if (t >= 100) return 'aka ' + tileLabel(t - 100);
   if (t === 51) return '0m';
   if (t === 52) return '0p';
   if (t === 53) return '0s';
@@ -85,40 +112,53 @@ export function tileLabel(t: TenhouTile): string {
  *   "123m456p789s"  → 1m2m3m 4p5p6p 7s8s9s
  *   "0m"            → red five man (51)
  *   "1234567z"      → E S W N haku hatsu chun (41..47)
- * Digits accumulate until a suit letter (m/p/s/z) flushes them. Unknown
- * characters (spaces, commas) are ignored, so it's forgiving for fast entry.
+ *   "a7z" / "aka7z" → aka dora chun (147); "a" prefixes the next tile
+ * Digits accumulate until a suit letter (m/p/s/z) flushes them. An "a" marks
+ * the next tile as aka. Other characters (spaces, commas, the "k" in "aka")
+ * are ignored, so it's forgiving for fast entry.
  */
 export function parseTileNotation(input: string): TenhouTile[] {
   const out: TenhouTile[] = [];
-  let digits: number[] = [];
+  let digits: { d: number; aka: boolean }[] = [];
+  let akaPending = false;
   for (const ch of input.toLowerCase()) {
-    if (ch >= '0' && ch <= '9') { digits.push(ch.charCodeAt(0) - 48); continue; }
+    if (ch === 'a') { akaPending = true; continue; }
+    if (ch >= '0' && ch <= '9') { digits.push({ d: ch.charCodeAt(0) - 48, aka: akaPending }); akaPending = false; continue; }
     if (ch === 'm' || ch === 'p' || ch === 's' || ch === 'z') {
-      for (const d of digits) {
-        if (ch === 'z') { if (d >= 1 && d <= 7) out.push(40 + d); }
-        else if (d === 0) out.push(ch === 'm' ? 51 : ch === 'p' ? 52 : 53);
-        else out.push((ch === 'm' ? 10 : ch === 'p' ? 20 : 30) + d);
+      for (const { d, aka } of digits) {
+        let code: number | null = null;
+        if (ch === 'z') { if (d >= 1 && d <= 7) code = 40 + d; }
+        else if (d === 0) code = ch === 'm' ? 51 : ch === 'p' ? 52 : 53;
+        else code = (ch === 'm' ? 10 : ch === 'p' ? 20 : 30) + d;
+        if (code === null) continue;
+        out.push(aka ? makeAka(code) : code);
       }
-      digits = [];
+      digits = []; akaPending = false;
     }
-    // any other char (space, comma, etc.) is ignored
+    // any other char (space, comma, the "k" of "aka", etc.) is ignored and
+    // does NOT clear a pending aka flag
   }
   return out;
 }
 
-/** Format tenhou codes as notation, grouping consecutive same-suit tiles: [11,12,13,21] → "123m1p". */
+/** Format tenhou codes as notation, grouping consecutive same-suit tiles:
+ *  [11,12,13,21] → "123m1p"; aka tiles get an "a" prefix ([147] → "a7z"). */
 export function tilesToNotation(tiles: TenhouTile[]): string {
   let out = '', curSuit = '', buf = '';
   const flush = () => { if (buf) { out += buf + curSuit; buf = ''; } };
   for (const t of tiles) {
-    let suit: string, digit: string;
+    let suit: string, digit: string, aka = false;
     if (t === 51) { suit = 'm'; digit = '0'; }
     else if (t === 52) { suit = 'p'; digit = '0'; }
     else if (t === 53) { suit = 's'; digit = '0'; }
-    else if (t >= 41) { suit = 'z'; digit = String(t - 40); }
-    else { const s = Math.floor(t / 10); suit = s === 1 ? 'm' : s === 2 ? 'p' : 's'; digit = String(t % 10); }
+    else {
+      let base = t;
+      if (t >= 100) { aka = true; base = t - 100; }
+      if (base >= 41) { suit = 'z'; digit = String(base - 40); }
+      else { const s = Math.floor(base / 10); suit = s === 1 ? 'm' : s === 2 ? 'p' : 's'; digit = String(base % 10); }
+    }
     if (suit !== curSuit) { flush(); curSuit = suit; }
-    buf += digit;
+    buf += (aka ? 'a' : '') + digit;
   }
   flush();
   return out;

@@ -36,7 +36,7 @@ export interface ReplayGame {
   kyokus: KyokuReplay[];
 }
 
-const norm = (t: TenhouTile) => (t === 51 ? 15 : t === 52 ? 25 : t === 53 ? 35 : t);
+const norm = (t: TenhouTile) => (t >= 100 ? t - 100 : t === 51 ? 15 : t === 52 ? 25 : t === 53 ? 35 : t);
 
 function parseMeld(s: string): { type: string; tiles: TenhouTile[]; called?: TenhouTile } {
   const idx = s.search(/[a-z]/i);

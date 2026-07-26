@@ -22,7 +22,8 @@
  */
 
 import type { TenhouTile } from './tiles.js';
-import type { Game, Kyoku, PlayerHand, Call, Seat } from './model.js';
+import { stripAka } from './tiles.js';
+import type { Game, Kyoku, PlayerHand, Call, Seat, KyokuResult, Turn } from './model.js';
 
 export interface TenhouLog {
   title: string[];
@@ -165,6 +166,51 @@ export function kyokuToLog(k: Kyoku): unknown[] {
   }
   entry.push(resultArray(k));
   return entry;
+}
+
+/**
+ * Return a copy of the game with arbitrary (+100) aka dora stripped to their
+ * plain tiles, keeping native red-fives. tenhou's format can't express aka on
+ * non-five tiles, so tenhou-bound exports go through this first (native
+ * PaifuPlus surfaces — the editor, stream, share links, PDF embed — keep aka).
+ */
+export function tenhouCompatible(game: Game): Game {
+  const arr = (a: TenhouTile[]) => a.map(stripAka);
+  const opt = (t: TenhouTile | undefined) => (t === undefined ? undefined : stripAka(t));
+  return {
+    meta: game.meta,
+    kyokus: game.kyokus.map((k): Kyoku => ({
+      ...k,
+      doraIndicators: arr(k.doraIndicators),
+      uraIndicators: arr(k.uraIndicators),
+      players: k.players.map((p): PlayerHand => ({
+        ...p,
+        haipai: arr(p.haipai),
+        turns: p.turns.map((t): Turn => ({ ...t, draw: opt(t.draw), discard: opt(t.discard) })),
+        calls: p.calls.map((c): Call => ({ ...c, tiles: arr(c.tiles), calledTile: opt(c.calledTile) })),
+      })) as [PlayerHand, PlayerHand, PlayerHand, PlayerHand],
+      result: ((): KyokuResult => ({
+        ...k.result,
+        winningTile: opt(k.result.winningTile),
+        wins: k.result.wins?.map((w) => ({ ...w, winningTile: opt(w.winningTile) })),
+      }))(),
+    })),
+  };
+}
+
+/** True if the game uses tiles tenhou's format can't represent (aka dora on a
+ *  non-five tile), which {@link tenhouCompatible} would flatten to plain tiles. */
+export function hasNonTenhouTiles(game: Game): boolean {
+  const any = (a: TenhouTile[]) => a.some((t) => t >= 100);
+  const opt = (t: TenhouTile | undefined) => t !== undefined && t >= 100;
+  return game.kyokus.some((k) =>
+    any(k.doraIndicators) || any(k.uraIndicators) ||
+    k.players.some((p) =>
+      any(p.haipai) ||
+      p.turns.some((t) => opt(t.draw) || opt(t.discard)) ||
+      p.calls.some((c) => any(c.tiles) || opt(c.calledTile))) ||
+    opt(k.result.winningTile) ||
+    (k.result.wins?.some((w) => opt(w.winningTile)) ?? false));
 }
 
 export function gameToTenhou(game: Game): TenhouLog {

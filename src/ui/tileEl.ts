@@ -8,7 +8,10 @@ import { tileLabel } from '../core/tileDisplay.js';
 
 export function tileImg(t: TenhouTile, cls = ''): HTMLElement {
   const outer = document.createElement('span');
-  outer.className = `bt ${cls}`.trim();
+  // Arbitrary aka (+100) has no art: render the plain face and mark it .aka
+  // so CSS tints it red and adds an accessibility dot.
+  const aka = t >= 100 ? 'aka ' : '';
+  outer.className = `bt ${aka}${cls}`.trim();
   outer.title = tileLabel(t);
   const inner = document.createElement('i');
   inner.className = 'tf';

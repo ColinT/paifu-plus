@@ -12,7 +12,7 @@ import type { TenhouTile } from './tiles.js';
 import type { Game, Kyoku, PlayerHand, Call, CallType, Turn, Seat, KyokuResult, EndKind, Agari } from './model.js';
 import type { TenhouLog } from './tenhou.js';
 
-const normRed = (t: TenhouTile) => (t === 51 ? 15 : t === 52 ? 25 : t === 53 ? 35 : t);
+const normRed = (t: TenhouTile) => (t >= 100 ? t - 100 : t === 51 ? 15 : t === 52 ? 25 : t === 53 ? 35 : t);
 
 /** Split a meld string into its ordered tiles and the position/letter of the call marker. */
 function scanMeld(s: string): { tiles: TenhouTile[]; letter: string; letterPos: number } {

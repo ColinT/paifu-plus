@@ -1,7 +1,7 @@
 import './style.css';
 import { importPdf, readEmbeddedLog } from '../pdf/browser.js';
 import { gameToPdf } from '../pdf/export.js';
-import { gameToTenhou } from '../core/tenhou.js';
+import { gameToTenhou, tenhouCompatible, hasNonTenhouTiles } from '../core/tenhou.js';
 import { tenhouToGame } from '../core/tenhouImport.js';
 import type { Game } from '../core/model.js';
 import { openDialog } from './dialog.js';
@@ -151,7 +151,10 @@ function renderTabs() {
   tabsEl.append(el('button', { class: 'tab add', title: 'Add kyoku', onClick: () => { const last = state.game.kyokus[state.game.kyokus.length - 1]; state.game.kyokus.push(emptyKyoku(last ? Math.min(15, last.round + 1) : 0)); state.activeKyoku = state.game.kyokus.length - 1; renderAll(); } }, [icon('add')]));
 }
 
-const buildLog = () => gameToTenhou(state.game);
+// tenhou-JSON surfaces (panel, download, copy, viewer) strip arbitrary aka,
+// which tenhou can't represent. Native surfaces (share, PDF embed, replay
+// sync via getEditorLog) keep the faithful gameToTenhou(state.game).
+const buildLog = () => gameToTenhou(tenhouCompatible(state.game));
 function renderJson() {
   clear(jsonBody);
   const head = el('div', { class: 'json-head' }, [
@@ -252,9 +255,13 @@ function openImportDialog() {
 }
 
 function openExportDialog() {
+  const warning = hasNonTenhouTiles(state.game)
+    ? [el('div', { class: 'dialog-warning' }, [icon('warning'), el('span', {}, ['This record has aka dora on non-five tiles, which tenhou’s format can’t represent. They export as plain tiles in the Tenhou JSON and viewer — the PDF and PaifuPlus share links keep them.'])])]
+    : [];
   openDialog({
     title: 'Export',
     body: [
+      ...warning,
       el('div', { class: 'export-row' }, [
         el('button', { class: 'btn has-icon primary', onClick: exportPdf }, [icon('download'), 'Download PDF']),
         el('span', { class: 'muted' }, ['Rendered by PaifuPlus — re-importable']),
