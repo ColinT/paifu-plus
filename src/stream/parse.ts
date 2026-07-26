@@ -9,8 +9,10 @@
  *
  * Tokens (case-insensitive, separators flexible):
  *   round     e1 | e1.0 | e1-0-1  (wind+num[.honba[.sticks]])
- *   dora      d5m           (initial, before haipai; or kandora after a kan)
- *   ura       u5m           (ura-dora indicator, near a riichi win)
+ *   dora      d5m           the DORA tile (not the indicator); stored as the
+ *                           indicator internally. Initial, before haipai; or
+ *                           kandora after a kan.
+ *   ura       u5m           the ura-DORA tile (near a riichi win)
  *   haipai    123m456p..    optionally name-prefixed  "Alice:123m..."
  *   draw      5m | ?        (? = unseen/missed, flagged)
  *   discard   3p | x | x3p | r3p | riichi 3p | ?   (x=tsumogiri, r=riichi)
@@ -28,7 +30,7 @@
  */
 
 import type { Game, Kyoku, PlayerHand, Turn, Call, Seat, KyokuResult, Agari } from '../core/model.js';
-import { parseTileNotation, normalizeRed, tilesToNotation } from '../core/tiles.js';
+import { parseTileNotation, normalizeRed, tilesToNotation, doraToIndicator } from '../core/tiles.js';
 import type { TenhouTile } from '../core/tiles.js';
 import { scoreWin, agariDeltas, ryuukyokuDeltas, isTenpai, counts } from '../score/index.js';
 
@@ -301,10 +303,12 @@ export function parseStream(input: string): StreamParseResult {
 
     if (isPhase('need-round')) { warn(tok, 'expected a round token (e.g. e1) to start a hand'); continue; }
 
+    // `d`/`u` take the DORA tile (what the player sees as the bonus); tenhou
+    // stores the indicator, so convert dora → indicator here.
     const dm = asDora(t);
-    if (dm) { dora.push(...parseTileNotation(dm[2])); continue; }
+    if (dm) { dora.push(...parseTileNotation(dm[2]).map(doraToIndicator)); continue; }
     const um = asUra(t);
-    if (um) { ura.push(...parseTileNotation(um[2])); continue; }
+    if (um) { ura.push(...parseTileNotation(um[2]).map(doraToIndicator)); continue; }
 
     if (isPhase('haipai')) {
       const advance = () => { pendingName = ''; haipaiSeat++; if (haipaiSeat === 4) { phase = 'play'; turn = 0; expect = 'discard'; midTurnSeat = 0; } };

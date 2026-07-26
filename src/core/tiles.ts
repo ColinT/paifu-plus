@@ -46,6 +46,26 @@ export function normalizeRed(t: TenhouTile): TenhouTile {
   }
 }
 
+/** The dora tile shown by an indicator (next in sequence, wrapping):
+ *  6p→7p, 9m→1m, N(44)→E(41), chun(47)→haku(45). */
+export function indicatorToDora(t: TenhouTile): TenhouTile {
+  const n = normalizeRed(t);
+  if (n >= 41 && n <= 44) return n === 44 ? 41 : n + 1; // winds
+  if (n >= 45 && n <= 47) return n === 47 ? 45 : n + 1; // dragons
+  const base = Math.floor(n / 10) * 10, r = n % 10;      // number tiles 1..9
+  return base + (r === 9 ? 1 : r + 1);
+}
+
+/** The indicator that reveals a given dora (inverse of {@link indicatorToDora}):
+ *  7p→6p, 1m→9m, E(41)→N(44), haku(45)→chun(47). */
+export function doraToIndicator(t: TenhouTile): TenhouTile {
+  const n = normalizeRed(t);
+  if (n >= 41 && n <= 44) return n === 41 ? 44 : n - 1;
+  if (n >= 45 && n <= 47) return n === 45 ? 47 : n - 1;
+  const base = Math.floor(n / 10) * 10, r = n % 10;
+  return base + (r === 1 ? 9 : r - 1);
+}
+
 const HONOR_NAMES = ['', 'E', 'S', 'W', 'N', 'haku', 'hatsu', 'chun'];
 
 /** Human-readable label, e.g. 15 -> "5m", 51 -> "0m", 41 -> "E". */

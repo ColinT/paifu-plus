@@ -9,7 +9,7 @@ describe('stream transcription DSL', () => {
     expect(game.kyokus).toHaveLength(1);
     const k = game.kyokus[0];
     expect([k.round, k.honba]).toEqual([0, 0]);
-    expect(k.doraIndicators).toEqual([15]);
+    expect(k.doraIndicators).toEqual([14]); // d5m = dora 5m → indicator 4m (14)
     for (const p of k.players) expect(p.haipai).toHaveLength(13);
     expect(k.players[3].turns.some((t) => t.riichi)).toBe(true); // North riichi'd
     expect(k.result.kind).toBe('ryuukyoku');

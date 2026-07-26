@@ -4,6 +4,7 @@
 
 import type { Kyoku, PlayerHand } from '../core/model.js';
 import type { TenhouTile } from '../core/tiles.js';
+import { indicatorToDora } from '../core/tiles.js';
 import { tileImg, tileBack } from './tileEl.js';
 import { roundName } from './state.js';
 import { el } from './dom.js';
@@ -169,7 +170,8 @@ export function renderBoardView(container: HTMLElement, view: BoardView | undefi
   const mid = el('div', { class: 'sc-mid' }, [
     el('div', { class: 'bc-round' }, [`${roundName(view.round)}${view.honba ? ` · ${view.honba}b` : ''}`]),
     // Dora line, omitted when the ruleset has no dora (e.g. Chinese-style).
-    ...(view.dora.length ? [el('div', { class: 'bc-dora' }, ['dora ', ...view.dora.map((t) => miniTile(t)), ...(view.ura.length ? [el('span', { class: 'ura-lab' }, ['ura']), ...view.ura.map((t) => miniTile(t))] : [])])] : []),
+    // Stored values are indicators; show the actual dora tile they reveal.
+    ...(view.dora.length ? [el('div', { class: 'bc-dora' }, ['dora ', ...view.dora.map((t) => miniTile(indicatorToDora(t))), ...(view.ura.length ? [el('span', { class: 'ura-lab' }, ['ura']), ...view.ura.map((t) => miniTile(indicatorToDora(t)))] : [])])] : []),
     ...(view.sticks ? [el('div', { class: 'bc-sticks' }, [`供託 ${view.sticks}`])] : []),
     ...(view.result ? [resultEl(view.result, view.seats)] : []),
   ]);

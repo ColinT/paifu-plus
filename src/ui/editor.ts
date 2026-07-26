@@ -5,7 +5,7 @@
 
 import type { Kyoku, PlayerHand, Turn, Seat, EndKind } from '../core/model.js';
 import type { TenhouTile } from '../core/tiles.js';
-import { tilesToNotation, parseTileNotation } from '../core/tiles.js';
+import { tilesToNotation, parseTileNotation, indicatorToDora, doraToIndicator } from '../core/tiles.js';
 import { tileLabel } from '../core/tileDisplay.js';
 import { tileImg } from './tileEl.js';
 import { roundName, seatWind } from './state.js';
@@ -147,8 +147,9 @@ export function renderKyoku(container: HTMLElement, k: Kyoku, ctx: Ctx): void {
     el('label', { class: 'field' }, ['Round', roundSel]),
     el('label', { class: 'field' }, ['Honba', honba]),
     el('label', { class: 'field' }, ['Riichi sticks', sticks]),
-    labeled('Dora', tileGroup({ get: () => k.doraIndicators, set: (t) => { k.doraIndicators = t; }, ctx, placeholder: '5m' })),
-    labeled('Ura', tileGroup({ get: () => k.uraIndicators, set: (t) => { k.uraIndicators = t; }, ctx, placeholder: '5m' })),
+    // Fields show/accept the DORA tile; stored internally as the indicator.
+    labeled('Dora', tileGroup({ get: () => k.doraIndicators.map(indicatorToDora), set: (t) => { k.doraIndicators = t.map(doraToIndicator); }, ctx, placeholder: '7p' })),
+    labeled('Ura', tileGroup({ get: () => k.uraIndicators.map(indicatorToDora), set: (t) => { k.uraIndicators = t.map(doraToIndicator); }, ctx, placeholder: '7p' })),
   ]));
 
   const grid = el('div', { class: 'players-grid' });

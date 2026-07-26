@@ -12,7 +12,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { Game, Kyoku } from '../core/model.js';
 import { gameToTenhou } from '../core/tenhou.js';
-import { tilesToNotation } from '../core/tiles.js';
+import { tilesToNotation, indicatorToDora } from '../core/tiles.js';
 
 export const EMBED_NAME = 'paifuplus.json';
 
@@ -95,7 +95,7 @@ export async function gameToPdf(game: Game): Promise<Uint8Array> {
     ensure(70);
     const seatName = (curSeat: number) => names[(k.round + curSeat) % 4]; // current E,S,W,N
     line(`${roundName(k.round)}${k.honba ? ` · ${k.honba} honba` : ''}`, { size: 13, font: bold, gap: 2 });
-    if (k.doraIndicators.length) line(`Dora: ${tilesToNotation(k.doraIndicators)}${k.uraIndicators.length ? `   Ura: ${tilesToNotation(k.uraIndicators)}` : ''}`, { size: 9 });
+    if (k.doraIndicators.length) line(`Dora: ${tilesToNotation(k.doraIndicators.map(indicatorToDora))}${k.uraIndicators.length ? `   Ura: ${tilesToNotation(k.uraIndicators.map(indicatorToDora))}` : ''}`, { size: 9 });
     line(`Result: ${resultLine(k, names)}`, { size: 10, gap: 2 });
     for (let s = 0; s < 4; s++) {
       const fixed = (k.round + s) % 4;

@@ -13,7 +13,7 @@
  */
 
 import type { Game, Kyoku, Seat } from '../core/model.js';
-import { tilesToNotation } from '../core/tiles.js';
+import { tilesToNotation, indicatorToDora } from '../core/tiles.js';
 import { gameToTenhou } from '../core/tenhou.js';
 import { buildReplay } from '../replay/replay.js';
 import type { KyokuReplay } from '../replay/replay.js';
@@ -47,7 +47,7 @@ function ronToken(k: Kyoku): string {
 export function kyokuToStream(k: Kyoku, rk: KyokuReplay): string {
   const toks: string[] = [];
   toks.push(roundToken(k.round, k.honba, k.riichiSticks));
-  if (k.doraIndicators.length) toks.push('d' + tilesToNotation(k.doraIndicators));
+  if (k.doraIndicators.length) toks.push('d' + tilesToNotation(k.doraIndicators.map(indicatorToDora)));
 
   // Haipai in current-seat order (E, S, W, N). The dealer's 14th tile (their
   // first draw) is folded into the haipai, matching the parser's convention.
@@ -91,7 +91,7 @@ export function kyokuToStream(k: Kyoku, rk: KyokuReplay): string {
     }
   }
 
-  if (k.uraIndicators.length) toks.push('u' + tilesToNotation(k.uraIndicators));
+  if (k.uraIndicators.length) toks.push('u' + tilesToNotation(k.uraIndicators.map(indicatorToDora)));
   if (k.result.kind === 'tsumo') toks.push('tsumo');
   else if (k.result.kind === 'ron') toks.push(ronToken(k));
   else toks.push('ryuukyoku');
