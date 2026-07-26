@@ -29,7 +29,8 @@ button, input, select { font: inherit; color: inherit; }
 .replay-buttons { display: flex; align-items: center; gap: 6px; }
 .replay-slider { width: 100%; max-width: 760px; accent-color: var(--accent); }
 .replay-count { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 70px; text-align: center; }
-.replay-label { color: var(--fg); font-size: 13px; min-height: 18px; }
+.replay-label { color: var(--fg); font-size: 13px; min-height: 26px; display: flex; align-items: center; gap: 5px; }
+.replay-label .label-tile { --h: 24px; }
 .replay-buttons .spacer { flex: 1; }
 .comments { width: 100%; max-width: 760px; display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .comment { display: flex; align-items: center; gap: 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }

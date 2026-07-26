@@ -5,7 +5,7 @@ import type { ReplayGame, KyokuReplay, Step } from '../replay/replay.js';
 import { renderBoardView, scoreEnglish } from './board.js';
 import type { BoardView, BoardResult } from './board.js';
 import { roundName } from './state.js';
-import { tileLabel } from '../core/tileDisplay.js';
+import { tileImg } from './tileEl.js';
 import { el, clear } from './dom.js';
 import { icon } from './icon.js';
 import { logId, loadComments, saveComments, shareUrl } from './share.js';
@@ -48,12 +48,12 @@ function stepToBoardView(g: ReplayGame, k: KyokuReplay, step: Step): BoardView {
   return { round: k.round, honba: k.honba, sticks: k.sticks, dora: k.dora, ura: atEnd ? k.ura : [], seats, result: atEnd ? resultFromLog(k.result, step) : undefined, highlight: { seat: step.active, tile: step.tile } };
 }
 
-function stepLabel(g: ReplayGame, step: Step): string {
+function stepLabel(g: ReplayGame, step: Step): (Node | string)[] {
   const name = g.names[step.active] ?? `P${step.active + 1}`;
-  const tile = step.tile !== undefined ? ` ${tileLabel(step.tile)}` : '';
-  if (step.action === 'haipai') return 'Deal';
-  if (step.action === 'end') return step.label + (step.tile !== undefined ? tile : '');
-  return `${name}: ${step.label}${tile}`;
+  const tile = step.tile !== undefined ? [tileImg(step.tile, 'label-tile')] : [];
+  if (step.action === 'haipai') return ['Deal'];
+  if (step.action === 'end') return [step.label, ...tile];
+  return [`${name}: ${step.label}`, ...tile];
 }
 
 export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; onLog?: (log: any) => void }) {
@@ -146,7 +146,7 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
         el('button', { class: 'btn', title: 'Copy a shareable link (log + comments)', onClick: copyShareLink }, [icon('share'), ' Share']),
       ]),
       slider,
-      el('div', { class: 'replay-label' }, [stepLabel(state.game!, k.steps[state.step])]),
+      el('div', { class: 'replay-label' }, stepLabel(state.game!, k.steps[state.step])),
       renderComments(),
     );
   }
