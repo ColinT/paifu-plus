@@ -166,7 +166,7 @@ button, input, select { font: inherit; color: inherit; }
 /* Paint red only on the symbol's coloured ink, not its white parts: mask =
    (symbol alpha) minus (symbol luminance), so bright/white pixels are excluded. */
 .bt.aka .tf::before {
-  content: ''; position: absolute; inset: 0; background-color: #ce1914;
+  content: ''; position: absolute; inset: 0; background-color: #c51405;
   -webkit-mask-image: var(--face), var(--face);
   -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; -webkit-mask-size: 74%;
   -webkit-mask-source-type: alpha, luminance; -webkit-mask-composite: source-out;
@@ -180,7 +180,7 @@ button, input, select { font: inherit; color: inherit; }
   content: ''; position: absolute; top: 8%; right: 8%;
   /* size off --h (not %) so it stays a true circle on the portrait .tf */
   width: calc(var(--h, 40px) * 0.08); height: calc(var(--h, 40px) * 0.08);
-  border-radius: 50%; background: #ce1914; box-shadow: 0 0 0 1px #f4f0eb; pointer-events: none;
+  border-radius: 50%; background: #c51405; box-shadow: 0 0 0 1px #f4f0eb; pointer-events: none;
 }
 
 .board-empty { color: var(--muted); padding: 30px; }
