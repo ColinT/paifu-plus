@@ -12,7 +12,7 @@
       <filter id="aka-red" color-interpolation-filters="sRGB">
         <feColorMatrix type="luminanceToAlpha" result="lum" />
         <feComponentTransfer in="lum" result="notwhite">
-          <feFuncA type="discrete" tableValues="1 1 1 1 0" />
+          <feFuncA type="table" tableValues="1 1 1 0" />
         </feComponentTransfer>
         <feComposite in="notwhite" in2="SourceGraphic" operator="in" result="ink" />
         <feFlood flood-color="#CE1914" result="red" />
