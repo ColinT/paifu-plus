@@ -203,7 +203,7 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
     y -= 14;
 
     // Compute a tile size that fits the widest row and four bands on the page.
-    const labelW = 46, rowGap = 3, bandGap = 10, headerH = 13;
+    const labelW = 46, rowGap = 3, bandGap = 10, headerH = 13, GAP = 8;
     const rowsOf = (p: PlayerHand) => {
       const draws = p.turns.length;                       // ツモ cells (incl. ↓ / gaps)
       const disc = p.turns.filter((t) => t.discard !== undefined).length;
@@ -214,9 +214,10 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
     const availRowW = CW - labelW;
     let tileW = Math.min(20, availRowW / maxCells);
     let tileH = tileW / 0.75;
-    // height budget: header block (~34) + 4 bands (each with a riichi-label strip)
+    // height budget: header block (~34) + 4 bands (each with two GAPs and a
+    // riichi-label strip below the discards)
     const budget = (PH - 2 * M) - 40;
-    const bandH = () => headerH + 8 + 4 * (tileH + rowGap);
+    const bandH = () => headerH + 8 + 2 * GAP + 4 * (tileH + rowGap);
     while (bandH() * 4 + bandGap * 3 > budget && tileH > 8) { tileH -= 0.5; tileW = tileH * 0.75; }
 
     // Players in current-seat order E,S,W,N (fixed index (round+seat)%4).
@@ -252,7 +253,7 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
           const ls = !!c.landscape;
           const w = ls ? tileH : tileW, h = ls ? tileW : tileH;
           drawImgTL(await tile(c.t, ls), x, yy - (ls ? (tileH - h) / 2 : 0), w, h);
-          if (c.label && labelH) { const lp = labelH; const le = await text(c.label, lp, INK, true); const lw = lp * le.aspect; drawImgTL(le.img, x + (w - lw) / 2, yy + labelH, lw, lp); }
+          if (c.label && labelH) { const lp = labelH; const le = await text(c.label, lp, INK, true); const lw = lp * le.aspect; drawImgTL(le.img, x + (w - lw) / 2, yy - h - 1, lw, lp); }
           x += w + 1;
         }
       };
@@ -260,31 +261,31 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
         : win.wins?.length ? win.wins.find((w) => w.winner === p.seat)?.winningTile
         : win.winner === p.seat ? win.winningTile : undefined;
 
-      // 配牌
+      // 配牌 (a gap follows to set the opening hand apart)
       await rowLabel(L.haipai);
       await placeTiles([...p.haipai].sort(compareTiles).map((t) => ({ t })));
-      yy -= tileH + rowGap;
+      yy -= tileH + rowGap + GAP;
 
       // ツモ (draws; ↓ = tsumogiri; gap for called turns)
       await rowLabel(L.tsumo);
       await placeTiles(p.turns.map((t) => t.tsumogiri ? { arrow: true } : t.draw !== undefined ? { t: t.draw } : {}));
-      yy -= tileH + rowGap;
+      yy -= tileH; // draws and discards sit flush together
 
-      // 捨牌 (discards; riichi denoted by a ﾘｰﾁ label, not by rotation)
-      yy -= 8; // strip above the tiles for riichi labels
+      // 捨牌 (discards; riichi denoted by a ﾘｰﾁ label under the tile, not by rotation)
       await rowLabel(L.sutehai);
       await placeTiles(p.turns.filter((t) => t.discard !== undefined).map((t) => ({
         t: t.tsumogiri ? t.draw! : t.discard!, label: t.riichi ? L.riichi : undefined,
       })), 8);
-      yy -= tileH + rowGap;
+      yy -= tileH + 8 + rowGap + GAP; // 8 = riichi-label strip below; GAP sets the final shape apart
 
-      // 最終形 (concealed shape + melds; the winner's winning tile apart on the right)
+      // 最終形: concealed shape, then the winning tile, then called melds —
+      // laid out as the winner would hold them (hidden hand · win tile · calls).
       await rowLabel(L.final);
       const concealed = reconstructHand(p);
       if (isWinner && win.kind === 'tsumo' && winTile !== undefined) { const i = concealed.indexOf(winTile); if (i >= 0) concealed.splice(i, 1); }
       const finalCells: { t?: TenhouTile; landscape?: boolean }[] = concealed.map((t) => ({ t }));
-      for (const c of p.calls) { finalCells.push({}); finalCells.push(...meldCells(c, p.seat)); }
       if (isWinner && winTile !== undefined) { finalCells.push({}); finalCells.push({ t: winTile }); }
+      for (const c of p.calls) { finalCells.push({}); finalCells.push(...meldCells(c, p.seat)); }
       await placeTiles(finalCells);
       yy -= tileH + rowGap;
 
