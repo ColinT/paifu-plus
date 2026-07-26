@@ -38,6 +38,28 @@ export interface ImportResult {
   errors: { page: number; message: string }[];
 }
 
+/**
+ * If this PDF was exported by PaifuPlus it carries the tenhou/6 log as a file
+ * attachment; read it back for a lossless round-trip. Returns null for any
+ * other PDF (fall back to the Paifun page parser).
+ */
+export async function readEmbeddedLog(data: ArrayBuffer): Promise<any | null> {
+  try {
+    const doc = await getDocument({ data: new Uint8Array(data) }).promise;
+    const att = await doc.getAttachments();
+    if (att) {
+      for (const key of Object.keys(att)) {
+        if (!/\.json$/i.test(key) && !/paifuplus/i.test(key)) continue;
+        const content = (att as any)[key]?.content as Uint8Array | undefined;
+        if (!content) continue;
+        const log = JSON.parse(new TextDecoder().decode(content));
+        if (log && Array.isArray(log.log)) return log;
+      }
+    }
+  } catch { /* not a PaifuPlus PDF */ }
+  return null;
+}
+
 export async function importPdf(data: ArrayBuffer): Promise<ImportResult> {
   const doc = await getDocument({
     data: new Uint8Array(data),

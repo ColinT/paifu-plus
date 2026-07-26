@@ -1,7 +1,10 @@
 import './style.css';
-import { importPdf } from '../pdf/browser.js';
+import { importPdf, readEmbeddedLog } from '../pdf/browser.js';
+import { gameToPdf } from '../pdf/export.js';
 import { gameToTenhou } from '../core/tenhou.js';
 import { tenhouToGame } from '../core/tenhouImport.js';
+import type { Game } from '../core/model.js';
+import { openDialog } from './dialog.js';
 import { parseStream } from '../stream/parse.js';
 import type { Diagnostic } from '../stream/parse.js';
 import { gameToStream } from '../stream/serialize.js';
@@ -102,20 +105,15 @@ streamInput.addEventListener('input', () => { state.streamText = streamInput.val
 // ---- rendering ----
 function renderToolbar() {
   clear(toolbarEl);
-  const fileInput = el('input', { type: 'file', accept: '.pdf', class: 'hidden', onChange: onImport }) as HTMLInputElement;
   toolbarEl.append(
     el('span', { class: 'brand' }, ['PaifuPlus']),
     el('div', { class: 'mode-toggle' }, [
       el('button', { class: `btn has-icon${mode === 'editor' ? ' primary' : ''}`, onClick: () => setMode('editor') }, [icon('edit'), 'Editor']),
       el('button', { class: `btn has-icon${mode === 'replay' ? ' primary' : ''}`, onClick: () => setMode('replay') }, [icon('play_circle'), 'Replay']),
     ]),
-    el('button', { class: 'btn has-icon primary', onClick: () => fileInput.click() }, [icon('upload_file'), 'Import PAIFUN PDF']),
-    fileInput,
-    el('button', { class: 'btn has-icon', onClick: () => { if (confirm('Start a new empty game? Unsaved edits will be lost.')) { state.game = newGame(); state.activeKyoku = 0; state.streamText = ''; streamInput.value = ''; renderAll(); } } }, [icon('note_add'), 'New game']),
     el('span', { class: 'spacer' }),
-    el('button', { class: 'btn has-icon', onClick: copyJson }, [icon('content_copy'), 'Copy JSON']),
-    el('button', { class: 'btn has-icon primary', onClick: downloadJson }, [icon('download'), 'Download .json']),
-    el('a', { class: 'btn link has-icon', href: 'https://tenhou.net/6/', target: '_blank', rel: 'noopener', title: 'Open the tenhou viewer, then drag the downloaded file in' }, ['Tenhou viewer', icon('open_in_new')]),
+    el('button', { class: 'btn has-icon', onClick: openImportDialog }, [icon('upload_file'), 'Import']),
+    el('button', { class: 'btn has-icon primary', onClick: openExportDialog }, [icon('download'), 'Export']),
   );
 }
 
@@ -190,24 +188,99 @@ function parseStreamText() {
 }
 
 // ---- import / export ----
-async function onImport(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (!file) return;
+
+/** Adopt an imported game: update the model, refresh the editable stream, render. */
+function loadGame(game: Game) {
+  state.game = game;
+  state.activeKyoku = 0;
+  try { state.streamText = gameToStream(game); } catch { state.streamText = ''; }
+  streamInput.value = state.streamText;
+  clear(diagEl);
+  renderAll();
+}
+
+const isPdfBytes = (buf: ArrayBuffer) => new TextDecoder().decode(new Uint8Array(buf, 0, 5)) === '%PDF-';
+const baseName = () => (state.game.meta.title[0] || 'paifu').replace(/\s+/g, '_');
+
+function openImportDialog() {
+  const fileInput = el('input', { type: 'file', accept: '.pdf,.json,application/json,application/pdf', class: 'hidden', onChange: (e: Event) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) void handleFile(f); } }) as HTMLInputElement;
+  const drop = el('div', { class: 'dropzone', onClick: () => fileInput.click() }, [
+    icon('upload_file'), el('div', { class: 'dz-main' }, ['Drag & drop a Paifun PDF or Tenhou JSON']), el('div', { class: 'muted' }, ['or click to browse']),
+  ]);
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); const f = (e as DragEvent).dataTransfer?.files?.[0]; if (f) void handleFile(f); });
+
+  const paste = el('textarea', { class: 'paste-json', spellcheck: 'false', placeholder: '…or paste Tenhou/6 JSON here' }) as HTMLTextAreaElement;
+  const dlg = openDialog({
+    title: 'Import',
+    body: [
+      el('div', { class: 'import-formats' }, ['Supports ', el('b', {}, ['Paifun PDF']), ', ', el('b', {}, ['Tenhou JSON']), ', and PaifuPlus PDFs.']),
+      drop, fileInput,
+      el('div', { class: 'dialog-or' }, ['or paste JSON']),
+      paste,
+      el('div', { class: 'dialog-actions' }, [el('button', { class: 'btn primary', onClick: () => importJsonText(paste.value) }, ['Import JSON'])]),
+    ],
+  });
+
+  async function handleFile(f: File) {
+    try {
+      const buf = await f.arrayBuffer();
+      if (/\.pdf$/i.test(f.name) || isPdfBytes(buf)) {
+        const embedded = await readEmbeddedLog(buf);
+        if (embedded) { loadGame(tenhouToGame(embedded)); flash('Imported PaifuPlus PDF'); dlg.close(); return; }
+        const { kyokus, errors } = await importPdf(buf);
+        if (!kyokus.length) { alert('No hands found in that PDF.'); return; }
+        loadGame(gameFromKyokus(kyokus, f.name.replace(/\.pdf$/i, '')));
+        dlg.close();
+        if (errors.length) alert(`Imported ${kyokus.length} kyoku. ${errors.length} page(s) failed:\n` + errors.map((x) => `  p${x.page}: ${x.message}`).join('\n'));
+      } else {
+        importJsonText(new TextDecoder().decode(buf));
+      }
+    } catch (err) { alert('Import failed: ' + (err as Error).message); }
+  }
+
+  function importJsonText(text: string) {
+    if (!text.trim()) { alert('Paste a Tenhou/6 JSON log first.'); return; }
+    let log: any;
+    try { log = JSON.parse(text); } catch { alert('Not valid JSON.'); return; }
+    if (!log || !Array.isArray(log.log)) { alert('Not a tenhou/6 log (missing "log" array).'); return; }
+    loadGame(tenhouToGame(log));
+    flash('Imported Tenhou JSON');
+    dlg.close();
+  }
+}
+
+function openExportDialog() {
+  openDialog({
+    title: 'Export',
+    body: [
+      el('div', { class: 'export-row' }, [
+        el('button', { class: 'btn has-icon primary', onClick: exportPdf }, [icon('download'), 'Download PDF']),
+        el('span', { class: 'muted' }, ['Rendered by PaifuPlus — re-importable']),
+      ]),
+      el('div', { class: 'export-row' }, [
+        el('button', { class: 'btn has-icon', onClick: () => { downloadJson(); flash('Downloaded JSON'); } }, [icon('download'), 'Download Tenhou JSON']),
+        el('button', { class: 'btn has-icon', onClick: copyJson }, [icon('content_copy'), 'Copy JSON']),
+      ]),
+    ],
+  });
+}
+
+async function exportPdf() {
   try {
-    const { kyokus, errors } = await importPdf(await file.arrayBuffer());
-    state.game = gameFromKyokus(kyokus, file.name.replace(/\.pdf$/i, ''));
-    state.activeKyoku = 0; renderAll();
-    if (errors.length) alert(`Imported ${kyokus.length} kyoku. ${errors.length} page(s) failed:\n` + errors.map((x) => `  p${x.page}: ${x.message}`).join('\n'));
-  } catch (err) { alert('Import failed: ' + (err as Error).message); }
-  (e.target as HTMLInputElement).value = '';
+    const bytes = await gameToPdf(state.game);
+    downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), baseName() + '.pdf');
+    flash('Downloaded PDF');
+  } catch (err) { alert('PDF export failed: ' + (err as Error).message); }
 }
 
 const jsonText = () => JSON.stringify(buildLog());
 async function copyJson() { try { await navigator.clipboard.writeText(jsonText()); flash('Copied JSON'); } catch { alert('Copy failed — use Download.'); } }
-function downloadJson() {
-  const blob = new Blob([jsonText()], { type: 'application/json' });
+function downloadJson() { downloadBlob(new Blob([jsonText()], { type: 'application/json' }), baseName() + '.json'); }
+function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
-  const a = el('a', { href: url, download: (state.game.meta.title[0] || 'paifu').replace(/\s+/g, '_') + '.json' });
+  const a = el('a', { href: url, download: filename });
   document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
 function flash(msg: string) { const f = el('div', { class: 'flash' }, [msg]); document.body.append(f); setTimeout(() => f.remove(), 1600); }
