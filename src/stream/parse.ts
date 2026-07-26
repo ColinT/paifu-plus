@@ -145,6 +145,10 @@ export function parseStream(input: string): StreamParseResult {
     for (let s = 0 as Seat; s < 4; s++) {
       const p = players[s];
       const fi = fixedIndex(s, round);
+      // Calls carry the discarder as a CURRENT-hand seat during parsing; the model
+      // (and every consumer: meld rendering, tenhou export) expects a FIXED seat.
+      // Remap now, or a called meld is drawn from the wrong side in any non-E1 hand.
+      for (const c of p.calls) if (c.fromSeat !== undefined) c.fromSeat = fixedIndex(c.fromSeat, round);
       ordered[fi] = {
         seat: fi, name: p.name || `Player ${fi + 1}`,
         startScore: 25000, scoreDelta: 0,

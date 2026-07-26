@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { meldString } from '../src/core/tenhou.js';
+import { parseStream } from '../src/stream/parse.js';
 import type { Call, Seat } from '../src/core/model.js';
 
 describe('tenhou meld strings', () => {
@@ -23,5 +24,16 @@ describe('tenhou meld strings', () => {
   it('ankan is four tiles with a before the last', () => {
     const ankan: Call = { type: 'ankan', tiles: [25, 25, 25, 25], turn: 0 };
     expect(meldString(ankan, 0)).toBe('252525a25');
+  });
+
+  it('DSL call fromSeat is a fixed seat, so a kamipon in a non-E1 hand is from kamicha', () => {
+    // E2 (round 1): dealer (current E) discards 7z; their shimocha (current S) pons.
+    // The discarder is the caller's kamicha, so fromSeat must be the caller's seat−1.
+    const k = parseStream('e2 di9s 1835m46789p35s157z ? ? ? 7z kamipon').game.kyokus[0];
+    const caller = k.players.find((p) => p.calls.length)!;
+    const call = caller.calls[0];
+    expect(call.type).toBe('pon');
+    expect(call.fromSeat).toBe(((caller.seat + 3) % 4)); // discarder is the caller's kamicha
+    expect(meldString(call, caller.seat)).toBe('p7z7z7z'.replace(/7z/g, '47')); // called tile first (kamicha)
   });
 });
