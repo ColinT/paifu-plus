@@ -163,16 +163,13 @@ button, input, select { font: inherit; color: inherit; }
    comes in as --face). A red dot on the outer box is the accessibility marker.
    #d71e1e is the red used by the tile set's own red-five art. */
 .bt.aka .tf { position: relative; background-size: contain; }
-/* Paint red only on the symbol's coloured ink, not its white parts: mask =
-   (symbol alpha) minus (symbol luminance), so bright/white pixels are excluded. */
+/* Recolour the whole symbol a solid, uniform red by clipping a #CE1914 fill to
+   the face SVG (a plain alpha mask keeps the red at full opacity everywhere the
+   symbol is, so it matches the aka-manzu art exactly). */
 .bt.aka .tf::before {
-  content: ''; position: absolute; inset: 0; background-color: #c51405;
-  -webkit-mask-image: var(--face), var(--face);
-  -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; -webkit-mask-size: 74%;
-  -webkit-mask-source-type: alpha, luminance; -webkit-mask-composite: source-out;
-  mask-image: var(--face), var(--face);
-  mask-repeat: no-repeat; mask-position: center; mask-size: 74%;
-  mask-mode: alpha, luminance; mask-composite: subtract;
+  content: ''; position: absolute; inset: 0; background-color: #ce1914;
+  -webkit-mask: var(--face) center / 74% no-repeat;
+  mask: var(--face) center / 74% no-repeat;
 }
 /* Dot lives on .tf (the layer that rotates for side/top seats and melds) so it
    tracks the tile's orientation. Sized to match the red-five art's dot. */
@@ -180,7 +177,7 @@ button, input, select { font: inherit; color: inherit; }
   content: ''; position: absolute; top: 8%; right: 8%;
   /* size off --h (not %) so it stays a true circle on the portrait .tf */
   width: calc(var(--h, 40px) * 0.08); height: calc(var(--h, 40px) * 0.08);
-  border-radius: 50%; background: #c51405; box-shadow: 0 0 0 1px #f4f0eb; pointer-events: none;
+  border-radius: 50%; background: #ce1914; box-shadow: 0 0 0 1px #f4f0eb; pointer-events: none;
 }
 
 .board-empty { color: var(--muted); padding: 30px; }
