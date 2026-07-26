@@ -104,7 +104,7 @@ function renderToolbar() {
   clear(toolbarEl);
   const fileInput = el('input', { type: 'file', accept: '.pdf', class: 'hidden', onChange: onImport }) as HTMLInputElement;
   toolbarEl.append(
-    el('span', { class: 'brand' }, ['牌譜 → tenhou']),
+    el('span', { class: 'brand' }, ['PaifuPlus']),
     el('div', { class: 'mode-toggle' }, [
       el('button', { class: `btn has-icon${mode === 'editor' ? ' primary' : ''}`, onClick: () => setMode('editor') }, [icon('edit'), 'Editor']),
       el('button', { class: `btn has-icon${mode === 'replay' ? ' primary' : ''}`, onClick: () => setMode('replay') }, [icon('play_circle'), 'Replay']),
