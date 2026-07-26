@@ -250,12 +250,29 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
       const isLoser = win.kind === 'ron' && win.loser === p.seat;
       const delta = p.scoreDelta;
       const marker = isWinner ? (win.kind === 'tsumo' ? L.tsumoWin : L.ron) : isLoser ? L.dealin : '';
-      // Left: seat + name (+ result marker). Right: scores, right-aligned.
+      // Left: seat + name (+ result marker).
       let hx = M + boxPad + (await drawText(`${L.seat(seat)}  ${p.name}`, M + boxPad, yy, 10, INK)) + 8;
       if (marker) await drawText(marker, hx, yy, 10, isLoser ? '#c51405' : '#1668c5', true);
-      const scoreStr = `${L.start}${p.startScore}　${L.delta}${delta >= 0 ? '+' : ''}${delta}　${L.end}${p.startScore + delta}`;
-      const se = await text(scoreStr, 10, INK); const sw = 10 * se.aspect;
-      drawImgTL(se.img, M + CW - sw, yy, sw, 10);
+      // Right: a small bordered score table — 持点 / 動き / 合計 (start / Δ / total),
+      // each row label-left, value-right. Sits in the empty top-right of the band.
+      {
+        const tblW = 96, rowH = 10, tPad = 3, fs = 8;
+        const tblH = tPad * 2 + 3 * rowH;
+        const tblX = M + CW - tblW, tblTop = top + 2;
+        page.drawRectangle({ x: tblX, y: tblTop - tblH, width: tblW, height: tblH, borderColor: boxBorder, borderWidth: 0.75 });
+        const rows: [string, string][] = [
+          [L.start, `${p.startScore}`],
+          [L.delta, `${delta >= 0 ? '+' : ''}${delta}`],
+          [L.end, `${p.startScore + delta}`],
+        ];
+        let ry = tblTop - tPad - (rowH - fs) / 2;
+        for (const [lab, val] of rows) {
+          await drawText(lab, tblX + 5, ry, fs, INK);
+          const ve = await text(val, fs, INK); const vw = fs * ve.aspect;
+          drawImgTL(ve.img, tblX + tblW - 5 - vw, ry, vw, fs);
+          ry -= rowH;
+        }
+      }
       yy -= headerH;
 
       const rowLabel = async (lab: string) => { await drawText(lab, M, yy - (tileH - 9) / 2, 9, INK); };
