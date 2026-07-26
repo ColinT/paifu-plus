@@ -4,7 +4,7 @@
 
 import type { Kyoku, PlayerHand } from '../core/model.js';
 import type { TenhouTile } from '../core/tiles.js';
-import { indicatorToDora } from '../core/tiles.js';
+import { indicatorToDora, compareTiles } from '../core/tiles.js';
 import { tileImg, tileBack } from './tileEl.js';
 import { roundName } from './state.js';
 import { el } from './dom.js';
@@ -66,7 +66,7 @@ function reconstructHand(p: PlayerHand): TenhouTile[] {
   const remove = (tile: TenhouTile) => { const i = hand.indexOf(tile); if (i >= 0) hand.splice(i, 1); };
   for (const t of p.turns) if (t.discard !== undefined) remove(t.tsumogiri ? t.draw! : t.discard);
   for (const c of p.calls) for (const mt of c.tiles) remove(mt);
-  return hand.sort((a, b) => a - b);
+  return hand.sort(compareTiles);
 }
 
 export function kyokuToBoardView(k: Kyoku): BoardView {

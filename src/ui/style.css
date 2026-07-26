@@ -177,8 +177,9 @@ button, input, select { font: inherit; color: inherit; }
 /* Dot lives on .tf (the layer that rotates for side/top seats and melds) so it
    tracks the tile's orientation. Sized to match the red-five art's dot. */
 .bt.aka .tf::after {
-  content: ''; position: absolute; top: 8%; right: 8%; width: 10%; height: 10%;
-  max-width: 4px; max-height: 4px; min-width: 2px; min-height: 2px;
+  content: ''; position: absolute; top: 8%; right: 8%;
+  /* size off --h (not %) so it stays a true circle on the portrait .tf */
+  width: calc(var(--h, 40px) * 0.08); height: calc(var(--h, 40px) * 0.08);
   border-radius: 50%; background: #d71e1e; box-shadow: 0 0 0 1px rgba(255, 255, 255, .85); pointer-events: none;
 }
 

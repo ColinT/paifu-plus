@@ -6,6 +6,7 @@ import { renderBoardView, scoreEnglish } from './board.js';
 import type { BoardView, BoardResult } from './board.js';
 import { roundName } from './state.js';
 import { tileImg } from './tileEl.js';
+import { compareTiles } from '../core/tiles.js';
 import { el, clear } from './dom.js';
 import { icon } from './icon.js';
 import { logId, loadComments, saveComments, shareUrl } from './share.js';
@@ -36,7 +37,7 @@ function resultFromLog(result: any, step: Step): BoardResult | undefined {
 function stepToBoardView(g: ReplayGame, k: KyokuReplay, step: Step): BoardView {
   const atEnd = step.action === 'end';
   const seats = step.players.map((p, i) => {
-    const hand = [...p.hand].sort((a, b) => a - b);
+    const hand = [...p.hand].sort(compareTiles);
     let drawn: number | undefined;
     if (p.drawn !== null) { drawn = p.drawn; const idx = hand.indexOf(p.drawn); if (idx >= 0) hand.splice(idx, 1); }
     return {

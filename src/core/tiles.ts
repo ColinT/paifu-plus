@@ -72,6 +72,12 @@ export function stripAka(t: TenhouTile): TenhouTile {
   return t >= 100 ? t - 100 : t;
 }
 
+/** Sort comparator: order by the plain tile, so aka/red fives sit next to their
+ *  same-suit siblings (a red or aka 5m among the 5m, not at the end). */
+export function compareTiles(a: TenhouTile, b: TenhouTile): number {
+  return normalizeRed(a) - normalizeRed(b) || a - b;
+}
+
 /** The dora tile shown by an indicator (next in sequence, wrapping):
  *  6p→7p, 9m→1m, N(44)→E(41), chun(47)→haku(45). */
 export function indicatorToDora(t: TenhouTile): TenhouTile {

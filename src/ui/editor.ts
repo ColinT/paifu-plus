@@ -5,7 +5,7 @@
 
 import type { Kyoku, PlayerHand, Turn, Seat, EndKind } from '../core/model.js';
 import type { TenhouTile } from '../core/tiles.js';
-import { tilesToNotation, parseTileNotation, indicatorToDora, doraToIndicator } from '../core/tiles.js';
+import { tilesToNotation, parseTileNotation, indicatorToDora, doraToIndicator, compareTiles } from '../core/tiles.js';
 import { tileLabel } from '../core/tileDisplay.js';
 import { tileImg } from './tileEl.js';
 import { roundName, seatWind } from './state.js';
@@ -47,7 +47,7 @@ function tileGroup(opts: {
         if (r === null) return;
         const next = [...opts.get()];
         if (r === 'delete') next.splice(i, 1); else next[i] = r;
-        if (opts.sort) next.sort((a, b) => a - b);
+        if (opts.sort) next.sort(compareTiles);
         opts.set(next); input.value = tilesToNotation(next); renderPreview(); opts.ctx.refreshJson();
       };
       preview.append(tileChip(t, onClick, opts.chipClass?.(t, i) ?? ''));
@@ -57,7 +57,7 @@ function tileGroup(opts: {
 
   input.oninput = () => {
     let t = parseTileNotation(input.value);
-    if (opts.sort) t = [...t].sort((a, b) => a - b);
+    if (opts.sort) t = [...t].sort(compareTiles);
     opts.set(t); renderPreview(); opts.ctx.refreshJson();
   };
   renderPreview();
