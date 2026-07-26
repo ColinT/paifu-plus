@@ -170,6 +170,11 @@ export function parseStream(input: string): StreamParseResult {
   const asRound = (t: string) => /^[eswn][1-4]([._\-][0-9]+){0,2}$/i.exec(t.replace(/\s+/g, ''));
   const asDora = (t: string) => /^(kandora|dora|d)([0-9].*[mpsz])$/i.exec(t);
   const asUra = (t: string) => /^(ura|u)([0-9].*[mpsz])$/i.exec(t);
+  // Indicator-form dora/ura: the tile shown in the dead wall, not the dora it
+  // points to. Lets a red-five indicator be transcribed (dia5p / di0p), which
+  // "d" cannot express since it converts dora → indicator and drops the aka.
+  const asDoraInd = (t: string) => /^(dorai|di)([0-9a].*[mpsz])$/i.exec(t);
+  const asUraInd = (t: string) => /^(urai|ui)([0-9a].*[mpsz])$/i.exec(t);
   const asRiichi = (t: string) => /^(riichi|r)([0-9].*[mpsz])$/i.exec(t);
   const asTsumogiri = (t: string) => /^(tsumogiri|x)([0-9].*[mpsz])?$/i.exec(t);
   // Result token: tsumo, a draw, or a ron optionally prefixed with the winning
@@ -302,6 +307,13 @@ export function parseStream(input: string): StreamParseResult {
     if (rt) { startKyoku(rt); continue; }
 
     if (isPhase('need-round')) { warn(tok, 'expected a round token (e.g. e1) to start a hand'); continue; }
+
+    // `di`/`ui` take the INDICATOR tile directly (what sits in the dead wall);
+    // stored as-is so a red-five indicator survives. Checked before d/u.
+    const dim = asDoraInd(t);
+    if (dim) { dora.push(...parseTileNotation(dim[2])); continue; }
+    const uim = asUraInd(t);
+    if (uim) { ura.push(...parseTileNotation(uim[2])); continue; }
 
     // `d`/`u` take the DORA tile (what the player sees as the bonus); tenhou
     // stores the indicator, so convert dora → indicator here.

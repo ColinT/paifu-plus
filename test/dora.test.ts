@@ -32,4 +32,31 @@ describe('dora ↔ indicator', () => {
     const log2 = gameToTenhou(tenhouToGame(log1));
     expect(log2).toEqual(log1); // indicator [26] preserved unchanged
   });
+
+  it('DSL "di5p" sets the indicator directly (6p dora), same as "d6p"', () => {
+    const base = ' 123456789m1234z1z 123456789p1234z 123456789s1234z 123456789p1234z 1z ryuukyoku';
+    const di = parseStream('e1 di5p' + base).game;
+    const d = parseStream('e1 d6p' + base).game;
+    expect(di.kyokus[0].doraIndicators).toEqual([25]); // 5p indicator
+    expect(d.kyokus[0].doraIndicators).toEqual([25]);  // 6p dora → 5p indicator
+  });
+
+  it('"dia5p" / "di0p" transcribe a red-five indicator, and it survives serialize', () => {
+    const base = ' 123456789m1234z1z 123456789p1234z 123456789s1234z 123456789p1234z 1z ryuukyoku';
+    for (const tok of ['dia5p', 'di0p']) {
+      const game = parseStream('e1 ' + tok + base).game;
+      expect(game.kyokus[0].doraIndicators).toEqual([52]); // native red-five 5p indicator
+      // an aka indicator can't be a plain "d" token, so it serialises as "di0p"
+      expect(gameToStream(game)).toMatch(/di0p/);
+      // and re-parses to the same red-five indicator
+      expect(parseStream(gameToStream(game)).game.kyokus[0].doraIndicators).toEqual([52]);
+    }
+  });
+
+  it('ura indicator form "ui" mirrors "di"', () => {
+    const s = 'e1 di3m ui0s 123456789m1234z1z 123456789p1234z 123456789s1234z 123456789p1234z 1z ryuukyoku';
+    const k = parseStream(s).game.kyokus[0];
+    expect(k.doraIndicators).toEqual([13]); // 3m indicator
+    expect(k.uraIndicators).toEqual([53]);  // red-five 5s ura indicator
+  });
 });
