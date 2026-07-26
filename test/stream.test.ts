@@ -101,6 +101,18 @@ describe('stream transcription DSL', () => {
     expect(r.yaku?.map((y) => y.name)).toEqual(expect.arrayContaining(['平和', '門前清自摸和']));
   });
 
+  it('debits the riichi stick so a win balances to zero', () => {
+    // Sekiguchi rons Asakura for 3900; Asakura had declared riichi (r5z), so
+    // Asakura loses 3900 + 1000 (stick) and Sekiguchi gains 3900 + 1000 (collects it).
+    const s = 'e1 d7p Okada 996p7765m248s2447z Asakura 189m78p5z9966s661z Sekiguchi 23577p33z7z1238m2s Mizukoshi 249m357z1248p458s '
+      + '2z 8p 1m 7s 8m 1s 3z wpon 7z 5p 1s 5s 7z 8m 1z 2z x 5m 9m 8s 2s 9m r5z 6p 2s 3s 5z 3p 4z 4m x 6m 7s 1s 4m 6z 4z 5z x 6m x 2p '
+      + '7z 9s 6m 5s x 7s 6m 7z 5s 3s 5s 1m x 3m 7s 1z x 3p 7m 9p x 4p 3m 3s 7z 6z 7m 2p x 4s x 7m 2p 6s 4s 1p x ron';
+    const r = parseStream(s).game.kyokus[0].result;
+    expect(r.kind).toBe('ron');
+    expect(r.deltas).toEqual([0, -4900, 4900, 0]);
+    expect(r.deltas.reduce((a, b) => a + b, 0)).toBe(0); // balances
+  });
+
   it('computes ryuukyoku tenpai payments', () => {
     // North is tenpai (13-tile wait), others noten; simplest: end immediately after haipai
     const s = 'e1 123456789m1234z1z 133557799p1133s 133557799s1133m 23499m456678p23s 1z ryuukyoku';

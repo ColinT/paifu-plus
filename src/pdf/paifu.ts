@@ -53,6 +53,7 @@ interface Labels {
   haipai: string; tsumo: string; sutehai: string; final: string;
   start: string; delta: string; end: string; dora: string; ura: string;
   riichi: string; ron: string; tsumoWin: string; dealin: string; draw: string;
+  honba: string; sticks: string;
   call: Record<CallType, string>;
   round: (wind: number, num: number, honba: number, sticks: number) => string;
   seat: (s: number) => string;
@@ -63,6 +64,7 @@ const LABELS: Record<PaifuLang, Labels> = {
     haipai: '配牌', tsumo: 'ツモ', sutehai: '捨牌', final: '最終形',
     start: '持点', delta: '動き', end: '合計', dora: 'ドラ', ura: '裏',
     riichi: 'ﾘｰﾁ', ron: 'ロン', tsumoWin: 'ツモ', dealin: 'ﾌﾘｺﾐ', draw: '流局',
+    honba: '本場', sticks: '供託',
     call: { chi: 'チー', pon: 'ポン', daiminkan: 'カン', kakan: 'ポン', ankan: 'カン' },
     round: (w, n, honba, sticks) => `${WINDS_JA[w]}${n}局${honba}本場　供託${sticks}点`,
     seat: (s) => `${WINDS_JA[s]}家`,
@@ -71,6 +73,7 @@ const LABELS: Record<PaifuLang, Labels> = {
     haipai: 'Haipai', tsumo: 'Draws', sutehai: 'Discards', final: 'Final',
     start: 'Start', delta: 'Δ', end: 'End', dora: 'Dora', ura: 'Ura',
     riichi: 'Riichi', ron: 'Ron', tsumoWin: 'Tsumo', dealin: 'Deal-in', draw: 'Draw',
+    honba: 'Honba', sticks: 'Sticks',
     call: { chi: 'Chi', pon: 'Pon', daiminkan: 'Kan', kakan: 'Pon', ankan: 'Kan' },
     round: (w, n, honba, sticks) => `${WINDS_EN[w]} ${n}${honba ? ` · ${honba} honba` : ''}${sticks ? ` · ${sticks} sticks` : ''}`,
     seat: (s) => WINDS_EN[s],
@@ -256,18 +259,41 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
       // Left: seat + name (+ result marker).
       let hx = M + boxPad + (await drawText(`${L.seat(seat)}  ${p.name}`, M + boxPad, yy, 10, INK)) + 8;
       if (marker) await drawText(marker, hx, yy, 10, isLoser ? '#c51405' : '#1668c5', true);
-      // Right: a small bordered score table — 持点 / 動き / 合計 (start / Δ / total),
-      // each row label-left, value-right. Sits in the empty top-right of the band.
+      // Right: a bordered score table, broken into its parts like a PAIFUN sheet —
+      // 持点 (start), the round result (ロン/ツモ/ﾌﾘｺﾐ), 本場 honba, 供託 riichi
+      // sticks, then 合計 (final). Zero components are omitted; label left, value right.
       {
-        const tblW = 96, rowH = 10, tPad = 3, fs = 8;
-        const tblH = tPad * 2 + 3 * rowH;
+        // Riichi sticks: each declaration this kyoku bets 1000; the winner collects
+        // every stick on the table (this kyoku's plus any carried over).
+        const riichiThis = k.players.filter((pl) => pl.turns.some((t) => t.riichi)).length;
+        const totalSticks = k.riichiSticks + riichiThis;
+        const iRiichi = p.turns.some((t) => t.riichi);
+        const winnerCount = win.kind === 'ryuukyoku' ? 0 : (win.wins?.length ?? 1);
+        let honbaPts = 0, sticks = 0;
+        if (iRiichi) sticks -= 1000;
+        if (isWinner) {
+          honbaPts = 300 * k.honba;                                  // ron 300; tsumo 100×3 payers
+          if (win.winner === p.seat) sticks += totalSticks * 1000;   // sole / head-bump winner collects
+        } else if (win.kind === 'ron' && isLoser) {
+          honbaPts = -300 * k.honba * winnerCount;
+        } else if (win.kind === 'tsumo') {
+          honbaPts = -100 * k.honba;
+        }
+        const result = delta - honbaPts - sticks; // hand value (or draw noten payment)
+        const resultLabel = win.kind === 'ryuukyoku' ? L.draw
+          : isWinner ? (win.kind === 'tsumo' ? L.tsumoWin : L.ron)
+          : win.kind === 'ron' ? L.dealin : L.tsumoWin;
+        const sgn = (v: number) => `${v >= 0 ? '+' : ''}${v}`;
+        const rows: [string, string][] = [[L.start, `${p.startScore}`]];
+        if (result !== 0) rows.push([resultLabel, sgn(result)]);
+        if (honbaPts !== 0) rows.push([L.honba, sgn(honbaPts)]);
+        if (sticks !== 0) rows.push([L.sticks, sgn(sticks)]);
+        rows.push([L.end, `${p.startScore + delta}`]);
+
+        const tblW = 104, rowH = 10, tPad = 3, fs = 8;
+        const tblH = tPad * 2 + rows.length * rowH;
         const tblX = M + CW - tblW, tblTop = top + 2;
         page.drawRectangle({ x: tblX, y: tblTop - tblH, width: tblW, height: tblH, borderColor: boxBorder, borderWidth: 0.75 });
-        const rows: [string, string][] = [
-          [L.start, `${p.startScore}`],
-          [L.delta, `${delta >= 0 ? '+' : ''}${delta}`],
-          [L.end, `${p.startScore + delta}`],
-        ];
         let ry = tblTop - tPad - (rowH - fs) / 2;
         for (const [lab, val] of rows) {
           await drawText(lab, tblX + 5, ry, fs, INK);

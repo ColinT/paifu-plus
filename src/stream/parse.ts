@@ -152,6 +152,16 @@ export function parseStream(input: string): StreamParseResult {
       };
     }
     const res: KyokuResult = result ?? { kind: 'ryuukyoku', deltas: [0, 0, 0, 0] };
+    // Each riichi declared this kyoku puts a 1000 stick on the table: debit the
+    // declarer. agariDeltas already credits the winner with every stick collected
+    // (this kyoku's + carried), and at a draw the sticks just carry on — but the
+    // declarer's −1000 was never applied, so deltas didn't balance. Fix that here.
+    for (let s = 0 as Seat; s < 4; s++) {
+      if (!players[s].riichi) continue;
+      const fi = fixedIndex(s, round);
+      res.deltas[fi] -= 1000;
+      if (res.wins?.length) res.wins[0].deltas[fi] -= 1000; // keep per-win deltas summing to the combined total
+    }
     for (let i = 0; i < 4; i++) ordered[i].scoreDelta = res.deltas[i] ?? 0; // reflect result in each player's score
     kyokus.push({ round, honba, riichiSticks: startSticks, doraIndicators: dora.slice(), uraIndicators: ura.slice(), players: ordered as [PlayerHand, PlayerHand, PlayerHand, PlayerHand], result: res });
     players = null; phase = 'need-round';
