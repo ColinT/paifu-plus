@@ -265,7 +265,6 @@ function openExportDialog() {
       ]),
       el('div', { class: 'export-row' }, [
         el('button', { class: 'btn has-icon', onClick: openInTenhou }, [icon('open_in_new'), 'Open in Tenhou viewer']),
-        el('span', { class: 'muted' }, ['tenhou.net/5']),
       ]),
     ],
   });
