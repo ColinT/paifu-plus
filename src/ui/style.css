@@ -162,17 +162,9 @@ button, input, select { font: inherit; color: inherit; }
    paint the symbol solid red by clipping a red fill to the face SVG (its shape
    comes in as --face). A red dot on the outer box is the accessibility marker.
    #d71e1e is the red used by the tile set's own red-five art. */
-.bt.aka .tf { position: relative; background-size: contain; }
-/* Recolour the symbol solid #CE1914: the #aka-red SVG filter thresholds the
-   face to two values (dropping white detail) and floods it red at full opacity,
-   so the ink is uniform and white parts show the tile body. */
-.bt.aka .tf::before {
-  content: ''; position: absolute; inset: 0;
-  background: var(--face) center / 74% no-repeat;
-  filter: url(#aka-red);
-}
-/* Dot lives on .tf (the layer that rotates for side/top seats and melds) so it
-   tracks the tile's orientation. Sized to match the red-five art's dot. */
+/* Aka dora uses pre-generated red art; the only extra is an accessibility dot,
+   placed on .tf so it tracks the tile's orientation (side/top seats, melds). */
+.bt.aka .tf { position: relative; }
 .bt.aka .tf::after {
   content: ''; position: absolute; top: 8%; right: 8%;
   /* size off --h (not %) so it stays a true circle on the portrait .tf */

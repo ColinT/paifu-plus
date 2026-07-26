@@ -21,6 +21,6 @@ for (const [path, url] of Object.entries(mods)) {
 }
 
 export const frontUrl = front;
-/** URL of the face symbol for a tenhou tile code (red fives have their own art;
- *  arbitrary aka tiles use the plain face and are tinted red in CSS). */
-export function tileFaceUrl(t: TenhouTile): string | undefined { return byCode[t >= 100 ? t - 100 : t]; }
+/** URL of the face symbol for a tenhou tile code. Aka dora on any tile (code +
+ *  100) has pre-generated red art (1NN.svg); fall back to the plain face. */
+export function tileFaceUrl(t: TenhouTile): string | undefined { return byCode[t] ?? byCode[t >= 100 ? t - 100 : t]; }

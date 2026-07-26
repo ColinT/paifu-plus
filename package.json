@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "convert": "tsx scripts/convert-cli.ts"
+    "convert": "tsx scripts/convert-cli.ts",
+    "gen-aka": "node scripts/gen-aka-tiles.mjs"
   },
   "dependencies": {
     "pdf-lib": "^1.17.1",
