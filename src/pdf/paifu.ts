@@ -12,7 +12,7 @@
  */
 
 import { PDFDocument, rgb, type PDFImage } from 'pdf-lib';
-import type { Game, Kyoku, PlayerHand } from '../core/model.js';
+import type { CallType, Game, Kyoku, PlayerHand } from '../core/model.js';
 import { gameToTenhou } from '../core/tenhou.js';
 import { compareTiles, isRedFive, type TenhouTile } from '../core/tiles.js';
 import { tileFaceUrl, frontUrl } from '../core/tileImage.js';
@@ -53,6 +53,7 @@ interface Labels {
   haipai: string; tsumo: string; sutehai: string; final: string;
   start: string; delta: string; end: string; dora: string; ura: string;
   riichi: string; ron: string; tsumoWin: string; dealin: string; draw: string;
+  call: Record<CallType, string>;
   round: (wind: number, num: number, honba: number, sticks: number) => string;
   seat: (s: number) => string;
 }
@@ -62,6 +63,7 @@ const LABELS: Record<PaifuLang, Labels> = {
     haipai: '配牌', tsumo: 'ツモ', sutehai: '捨牌', final: '最終形',
     start: '持点', delta: '動き', end: '合計', dora: 'ドラ', ura: '裏',
     riichi: 'ﾘｰﾁ', ron: 'ロン', tsumoWin: 'ツモ', dealin: 'ﾌﾘｺﾐ', draw: '流局',
+    call: { chi: 'チー', pon: 'ポン', daiminkan: 'カン', kakan: 'ポン', ankan: 'カン' },
     round: (w, n, honba, sticks) => `${WINDS_JA[w]}${n}局${honba}本場　供託${sticks}点`,
     seat: (s) => `${WINDS_JA[s]}家`,
   },
@@ -69,6 +71,7 @@ const LABELS: Record<PaifuLang, Labels> = {
     haipai: 'Haipai', tsumo: 'Draws', sutehai: 'Discards', final: 'Final',
     start: 'Start', delta: 'Δ', end: 'End', dora: 'Dora', ura: 'Ura',
     riichi: 'Riichi', ron: 'Ron', tsumoWin: 'Tsumo', dealin: 'Deal-in', draw: 'Draw',
+    call: { chi: 'Chi', pon: 'Pon', daiminkan: 'Kan', kakan: 'Pon', ankan: 'Kan' },
     round: (w, n, honba, sticks) => `${WINDS_EN[w]} ${n}${honba ? ` · ${honba} honba` : ''}${sticks ? ` · ${sticks} sticks` : ''}`,
     seat: (s) => WINDS_EN[s],
   },
@@ -302,9 +305,17 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
       await placeTiles([...p.haipai].sort(compareTiles).map((t) => ({ t })));
       yy -= tileH + rowGap + GAP;
 
-      // ツモ (draws; ↓ = tsumogiri; gap for called turns)
+      // ツモ (draws; ↓ = tsumogiri). A called turn has no wall draw — show the
+      // claimed tile in its place, labelled チー/ポン/カン above the row. (ankan
+      // happens on a real draw turn, so it stays a normal drawn tile.)
+      const claimByTurn = new Map<number, PlayerHand['calls'][number]>();
+      for (const c of p.calls) if (c.type !== 'ankan') claimByTurn.set(c.turn, c);
       await rowLabel(L.tsumo);
-      await placeTiles(p.turns.map((t) => t.tsumogiri ? { arrow: true } : t.draw !== undefined ? { t: t.draw } : {}));
+      await placeTiles(p.turns.map((t, i) => {
+        const claim = claimByTurn.get(i);
+        if (claim) return { t: claim.calledTile ?? claim.tiles[0], labelAbove: L.call[claim.type] };
+        return t.tsumogiri ? { arrow: true } : t.draw !== undefined ? { t: t.draw } : {};
+      }));
       yy -= tileH; // draws and discards sit flush together
 
       // 捨牌 (discards; a ﾘｰﾁ / ﾌﾘｺﾐ label sits under the tile, no rotation).
