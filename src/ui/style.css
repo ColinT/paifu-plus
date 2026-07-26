@@ -104,7 +104,7 @@ button, input, select { font: inherit; color: inherit; }
 .stick::after { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; border-radius: 50%; background: #e33; transform: translate(-50%, -50%); }
 .sc-mid { grid-area: 2 / 2; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .bc-round { font-weight: 700; } .bc-sticks, .bc-dora { font-size: 11px; color: #cfe; display: flex; align-items: center; gap: 2px; }
-.bc-dora { --h: 24px; }
+.bc-dora { --h: 44px; }
 .ura-lab { margin-left: 4px; }
 .bc-result { font-size: 11px; padding: 3px 8px; border-radius: 4px; background: rgba(0,0,0,.3); max-width: 160px; }
 .bc-result.tsumo, .bc-result.ron { color: #ffd66b; }
@@ -120,7 +120,7 @@ button, input, select { font: inherit; color: inherit; }
 .station .hand-toggle:hover { opacity: 1; border-color: rgba(255, 255, 255, .4); }
 .station .hand-toggle.on { background: rgba(210, 140, 40, .35); border-color: rgba(255, 200, 120, .5); opacity: .95; }
 
-.river { display: grid; grid-template-columns: repeat(6, auto); gap: 7px 1px; align-content: start; justify-content: center; --h: 34px; }
+.river { display: grid; grid-template-columns: repeat(6, auto); gap: 7px 1px; align-content: start; justify-content: center; --h: 44px; }
 .riv-bottom { grid-area: 3 / 2; } .riv-top { grid-area: 1 / 2; transform: rotate(180deg); }
 .riv-right { grid-area: 2 / 3; transform: rotate(270deg); } .riv-left { grid-area: 2 / 1; transform: rotate(90deg); }
 .river .bt { position: relative; }
