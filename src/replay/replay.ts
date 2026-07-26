@@ -87,28 +87,43 @@ function simulateKyoku(entry: any[]): KyokuReplay {
   const snap = (action: ActionType, seat: number, tile: TenhouTile | undefined, label: string) =>
     steps.push({ players: P.map(clone) as Step['players'], active: seat, action, tile, label });
 
+  // The dealer's 14th tile is dealt, not drawn from the wall: fold it into the
+  // opening hand so the deal shows the dealer holding 14 and the first move is
+  // their discard (rather than a phantom "draw" of the 14th tile).
+  let dealerOpening = false;
+  const opener = draws[dealer]?.[0];
+  if (typeof opener === 'number') {
+    P[dealer].hand.push(opener); P[dealer].hand.sort((a, b) => a - b);
+    P[dealer].drawn = opener; lastDraw = opener; dp[dealer] = 1; dealerOpening = true;
+  }
+
   snap('haipai', dealer, undefined, 'Deal');
 
   let guard = 0;
   while (guard++ < 400) {
-    const d = draws[current]?.[dp[current]];
-    if (d === undefined) break; // player has no more actions → hand has ended
-
-    // ---- draw / call ----
-    if (typeof d === 'string') {
-      const meld = parseMeld(d);
-      // tiles that came from the caller's hand (all but one called copy)
-      const fromHand = [...meld.tiles];
-      if (meld.called !== undefined) { const i = fromHand.findIndex((x) => norm(x) === norm(meld.called!)); if (i >= 0) fromHand.splice(i, 1); }
-      for (const t of fromHand) removeOne(P[current].hand, t);
-      P[current].melds.push({ type: meld.type, tiles: meld.tiles, called: meld.called, from: lastDiscarder >= 0 ? lastDiscarder : undefined });
-      dp[current]++;
-      lastDraw = null; P[current].drawn = null;
-      snap('call', current, meld.called, meld.type);
+    if (dealerOpening && current === dealer) {
+      // Opening tile already in hand from the deal → go straight to the discard.
+      dealerOpening = false;
     } else {
-      P[current].hand.push(d); P[current].hand.sort((a, b) => a - b);
-      lastDraw = d; dp[current]++; P[current].drawn = d;
-      snap('draw', current, d, 'Draw');
+      const d = draws[current]?.[dp[current]];
+      if (d === undefined) break; // player has no more actions → hand has ended
+
+      // ---- draw / call ----
+      if (typeof d === 'string') {
+        const meld = parseMeld(d);
+        // tiles that came from the caller's hand (all but one called copy)
+        const fromHand = [...meld.tiles];
+        if (meld.called !== undefined) { const i = fromHand.findIndex((x) => norm(x) === norm(meld.called!)); if (i >= 0) fromHand.splice(i, 1); }
+        for (const t of fromHand) removeOne(P[current].hand, t);
+        P[current].melds.push({ type: meld.type, tiles: meld.tiles, called: meld.called, from: lastDiscarder >= 0 ? lastDiscarder : undefined });
+        dp[current]++;
+        lastDraw = null; P[current].drawn = null;
+        snap('call', current, meld.called, meld.type);
+      } else {
+        P[current].hand.push(d); P[current].hand.sort((a, b) => a - b);
+        lastDraw = d; dp[current]++; P[current].drawn = d;
+        snap('draw', current, d, 'Draw');
+      }
     }
 
     // ---- discard (or kan, or tsumo end) ----

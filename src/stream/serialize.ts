@@ -49,7 +49,6 @@ export function kyokuToStream(k: Kyoku, rk: KyokuReplay): string {
   toks.push(roundToken(k.round, k.honba, k.riichiSticks));
   if (k.doraIndicators.length) toks.push('d' + tilesToNotation(k.doraIndicators));
 
-  const dealer = (k.round % 4) as Seat;
   // Haipai in current-seat order (E, S, W, N). The dealer's 14th tile (their
   // first draw) is folded into the haipai, matching the parser's convention.
   for (let s = 0 as Seat; s < 4; s++) {
@@ -61,15 +60,14 @@ export function kyokuToStream(k: Kyoku, rk: KyokuReplay): string {
     toks.push(isDefaultName(p.name) ? note : `${p.name.replace(/\s+/g, '_')}:${note}`);
   }
 
-  // Play order from the replay engine, skipping the haipai step and the dealer's
-  // already-folded first draw.
-  let skippedDealerDraw = false;
+  // Play order from the replay engine. The dealer's opening tile is already
+  // folded into the deal (haipai step), so every 'draw' step here is a real
+  // wall draw to emit.
   for (let i = 1; i < rk.steps.length; i++) {
     const step = rk.steps[i];
     if (step.action === 'end') break;
 
     if (step.action === 'draw') {
-      if (step.active === dealer && !skippedDealerDraw) { skippedDealerDraw = true; continue; }
       if (step.tile !== undefined) toks.push(tilesToNotation([step.tile]));
     } else if (step.action === 'discard') {
       const river = step.players[step.active].river;

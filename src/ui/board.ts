@@ -168,7 +168,8 @@ export function renderBoardView(container: HTMLElement, view: BoardView | undefi
   if (!view) { container.append(el('div', { class: 'board-empty' }, ['No hand to display'])); return; }
   const mid = el('div', { class: 'sc-mid' }, [
     el('div', { class: 'bc-round' }, [`${roundName(view.round)}${view.honba ? ` · ${view.honba}b` : ''}`]),
-    el('div', { class: 'bc-dora' }, ['ドラ ', ...view.dora.map((t) => miniTile(t)), ...(view.ura.length ? [el('span', { class: 'ura-lab' }, ['裏']), ...view.ura.map((t) => miniTile(t))] : [])]),
+    // Dora line, omitted when the ruleset has no dora (e.g. Chinese-style).
+    ...(view.dora.length ? [el('div', { class: 'bc-dora' }, ['dora ', ...view.dora.map((t) => miniTile(t)), ...(view.ura.length ? [el('span', { class: 'ura-lab' }, ['ura']), ...view.ura.map((t) => miniTile(t))] : [])])] : []),
     ...(view.sticks ? [el('div', { class: 'bc-sticks' }, [`供託 ${view.sticks}`])] : []),
     ...(view.result ? [resultEl(view.result, view.seats)] : []),
   ]);

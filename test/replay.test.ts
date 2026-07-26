@@ -31,6 +31,20 @@ describe('replay engine', () => {
     expect(steps.length).toBeGreaterThan(2);
   });
 
+  it('folds the dealer opening tile into the deal — first move is the discard', () => {
+    const s = 'e1 123456789m1234z1z 123456789p1234z 123456789s1234z 123456789p1234z 1z ryuukyoku';
+    const steps = buildReplay(gameToTenhou(parseStream(s).game)).kyokus[0].steps;
+    expect(steps[0].action).toBe('haipai');
+    // Dealer holds 14 at the deal (13 haipai + the folded opening tile).
+    expect(steps[0].players[0].hand.length).toBe(14);
+    expect(steps[0].players[0].drawn).not.toBeNull();
+    // The dealer's first move is a discard, not a phantom draw of the 14th tile.
+    expect(steps[1].action).toBe('discard');
+    expect(steps[1].active).toBe(0);
+    // No draw step is ever attributed to the dealer's opening turn.
+    expect(steps.some((st) => st.action === 'draw' && st.active === 0 && steps.indexOf(st) === 1)).toBe(false);
+  });
+
   it('reconstructs a tsumo win (final draw, no discard)', () => {
     const s = 'e1 123456789m1234z1z 123456789p1234z 123456789s1234z 23499m456678p23s 1z 9p 8p 9s 8s 4s tsumo';
     const replay = buildReplay(gameToTenhou(parseStream(s).game));
