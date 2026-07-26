@@ -6,6 +6,19 @@
     <title>PaifuPlus</title>
   </head>
   <body>
+    <!-- Aka-dora recolour: threshold the tile symbol to two values (dropping
+         white), then flood it solid #CE1914. Referenced from CSS via filter. -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <filter id="aka-red" color-interpolation-filters="sRGB">
+        <feColorMatrix type="luminanceToAlpha" result="lum" />
+        <feComponentTransfer in="lum" result="notwhite">
+          <feFuncA type="discrete" tableValues="1 1 1 1 0" />
+        </feComponentTransfer>
+        <feComposite in="notwhite" in2="SourceGraphic" operator="in" result="ink" />
+        <feFlood flood-color="#CE1914" result="red" />
+        <feComposite in="red" in2="ink" operator="in" />
+      </filter>
+    </svg>
     <div id="app"></div>
     <script type="module" src="/src/ui/main.ts"></script>
   </body>

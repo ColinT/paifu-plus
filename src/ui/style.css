@@ -163,13 +163,13 @@ button, input, select { font: inherit; color: inherit; }
    comes in as --face). A red dot on the outer box is the accessibility marker.
    #d71e1e is the red used by the tile set's own red-five art. */
 .bt.aka .tf { position: relative; background-size: contain; }
-/* Recolour the whole symbol a solid, uniform red by clipping a #CE1914 fill to
-   the face SVG (a plain alpha mask keeps the red at full opacity everywhere the
-   symbol is, so it matches the aka-manzu art exactly). */
+/* Recolour the symbol solid #CE1914: the #aka-red SVG filter thresholds the
+   face to two values (dropping white detail) and floods it red at full opacity,
+   so the ink is uniform and white parts show the tile body. */
 .bt.aka .tf::before {
-  content: ''; position: absolute; inset: 0; background-color: #ce1914;
-  -webkit-mask: var(--face) center / 74% no-repeat;
-  mask: var(--face) center / 74% no-repeat;
+  content: ''; position: absolute; inset: 0;
+  background: var(--face) center / 74% no-repeat;
+  filter: url(#aka-red);
 }
 /* Dot lives on .tf (the layer that rotates for side/top seats and melds) so it
    tracks the tile's orientation. Sized to match the red-five art's dot. */
