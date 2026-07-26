@@ -11,7 +11,7 @@
  * re-imports losslessly.
  */
 
-import { PDFDocument, type PDFImage } from 'pdf-lib';
+import { PDFDocument, rgb, type PDFImage } from 'pdf-lib';
 import type { Game, Kyoku, PlayerHand } from '../core/model.js';
 import { gameToTenhou } from '../core/tenhou.js';
 import { compareTiles, isRedFive, type TenhouTile } from '../core/tiles.js';
@@ -95,7 +95,11 @@ function dataUrlBytes(u: string): Uint8Array {
   return a;
 }
 
-const SS = 4; // supersample for crisp raster
+// Supersample for crisp raster. Tiles are placed at ~15-20pt but were being
+// rasterised at 4× a 60px base (~240px) — hugely oversized, so every viewer had
+// to downscale big images on each scroll (the reported lag). 2× keeps them
+// sharp to ~600% zoom while cutting each PNG's pixel count 4×.
+const SS = 2;
 
 /** Rasterise a tile (body + face + aka pip), portrait or landscape. */
 async function tileDataUrl(t: TenhouTile, landscape: boolean): Promise<string> {
@@ -241,7 +245,7 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
       yy -= headerH;
 
       const rowLabel = async (lab: string) => { await drawText(lab, M, yy - (tileH - 9) / 2, 9, INK); };
-      const placeTiles = async (cells: { t?: TenhouTile; landscape?: boolean; arrow?: boolean; label?: string }[], labelH = 0) => {
+      const placeTiles = async (cells: { t?: TenhouTile; landscape?: boolean; arrow?: boolean; label?: string; labelAbove?: string }[], labelH = 0) => {
         let x = M + labelW;
         for (const c of cells) {
           if (c.arrow) {
@@ -254,6 +258,7 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
           const w = ls ? tileH : tileW, h = ls ? tileW : tileH;
           drawImgTL(await tile(c.t, ls), x, yy - (ls ? (tileH - h) / 2 : 0), w, h);
           if (c.label && labelH) { const lp = labelH; const le = await text(c.label, lp, INK, true); const lw = lp * le.aspect; drawImgTL(le.img, x + (w - lw) / 2, yy - h - 1, lw, lp); }
+          if (c.labelAbove) { const lp = 8; const le = await text(c.labelAbove, lp, INK, true); const lw = lp * le.aspect; drawImgTL(le.img, x + (w - lw) / 2, yy + lp + 1, lw, lp); }
           x += w + 1;
         }
       };
@@ -271,23 +276,30 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
       await placeTiles(p.turns.map((t) => t.tsumogiri ? { arrow: true } : t.draw !== undefined ? { t: t.draw } : {}));
       yy -= tileH; // draws and discards sit flush together
 
-      // 捨牌 (discards; riichi denoted by a ﾘｰﾁ label under the tile, not by rotation)
+      // 捨牌 (discards; a ﾘｰﾁ / ﾌﾘｺﾐ label sits under the tile, no rotation).
+      // The deal-in tile is the loser's last discard (the tile that was ronned).
       await rowLabel(L.sutehai);
-      await placeTiles(p.turns.filter((t) => t.discard !== undefined).map((t) => ({
-        t: t.tsumogiri ? t.draw! : t.discard!, label: t.riichi ? L.riichi : undefined,
+      const discs = p.turns.filter((t) => t.discard !== undefined);
+      await placeTiles(discs.map((t, i) => ({
+        t: t.tsumogiri ? t.draw! : t.discard!,
+        label: (isLoser && i === discs.length - 1) ? L.dealin : t.riichi ? L.riichi : undefined,
       })), 8);
-      yy -= tileH + 8 + rowGap + GAP; // 8 = riichi-label strip below; GAP sets the final shape apart
+      yy -= tileH + 8 + rowGap + GAP; // 8 = riichi/deal-in label strip below; GAP sets the final shape apart
 
-      // 最終形: concealed shape, then the winning tile, then called melds —
-      // laid out as the winner would hold them (hidden hand · win tile · calls).
+      // 最終形: concealed shape, then the winning tile (labelled ロン / ツモ above
+      // it), then called melds — laid out as the winner would hold them.
       await rowLabel(L.final);
       const concealed = reconstructHand(p);
       if (isWinner && win.kind === 'tsumo' && winTile !== undefined) { const i = concealed.indexOf(winTile); if (i >= 0) concealed.splice(i, 1); }
-      const finalCells: { t?: TenhouTile; landscape?: boolean }[] = concealed.map((t) => ({ t }));
-      if (isWinner && winTile !== undefined) { finalCells.push({}); finalCells.push({ t: winTile }); }
+      const finalCells: { t?: TenhouTile; landscape?: boolean; labelAbove?: string }[] = concealed.map((t) => ({ t }));
+      if (isWinner && winTile !== undefined) { finalCells.push({}); finalCells.push({ t: winTile, labelAbove: win.kind === 'tsumo' ? L.tsumoWin : L.ron }); }
       for (const c of p.calls) { finalCells.push({}); finalCells.push(...meldCells(c, p.seat)); }
       await placeTiles(finalCells);
       yy -= tileH + rowGap;
+
+      // Box the whole band.
+      const boxTop = top + 4, boxBottom = yy + 2;
+      page.drawRectangle({ x: M - 4, y: boxBottom, width: CW + 8, height: boxTop - boxBottom, borderColor: rgb(0.72, 0.72, 0.72), borderWidth: 0.75 });
 
       return yy;
     }
