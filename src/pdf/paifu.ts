@@ -62,7 +62,7 @@ interface Labels {
 const LABELS: Record<PaifuLang, Labels> = {
   ja: {
     haipai: '配牌', tsumo: 'ツモ', sutehai: '捨牌', final: '最終形',
-    start: '持点', delta: '動き', end: '合計', dora: 'ドラ', ura: '裏',
+    start: '持点', delta: '動き', end: '合計', dora: 'ドラ表示', ura: '裏ドラ表示',
     riichi: 'ﾘｰﾁ', ron: 'ロン', tsumoWin: 'ツモ', dealin: 'ﾌﾘｺﾐ', draw: '流局',
     honba: '本場', sticks: '供託',
     call: { chi: 'チー', pon: 'ポン', daiminkan: 'カン', kakan: 'ポン', ankan: 'カン' },
@@ -71,11 +71,11 @@ const LABELS: Record<PaifuLang, Labels> = {
   },
   en: {
     haipai: 'Haipai', tsumo: 'Draws', sutehai: 'Discards', final: 'Final',
-    start: 'Start', delta: 'Δ', end: 'End', dora: 'Dora', ura: 'Ura',
+    start: 'Start', delta: 'Δ', end: 'End', dora: 'Dora indicator', ura: 'Ura indicator',
     riichi: 'Riichi', ron: 'Ron', tsumoWin: 'Tsumo', dealin: 'Deal-in', draw: 'Draw',
     honba: 'Honba', sticks: 'Sticks',
     call: { chi: 'Chi', pon: 'Pon', daiminkan: 'Kan', kakan: 'Pon', ankan: 'Kan' },
-    round: (w, n, honba, sticks) => `${WINDS_EN[w]} ${n}${honba ? ` · ${honba} honba` : ''}${sticks ? ` · ${sticks} sticks` : ''}`,
+    round: (w, n, honba, sticks) => `${WINDS_EN[w]} ${n} Honba ${honba}${sticks ? ` · ${sticks} sticks` : ''}`,
     seat: (s) => WINDS_EN[s],
   },
 };
