@@ -1,6 +1,6 @@
 import './style.css';
 import { importPdf, readEmbeddedLog } from '../pdf/browser.js';
-import { gameToPdf } from '../pdf/export.js';
+import { gameToPaifuPdf } from '../pdf/paifu.js';
 import { gameToTenhou, tenhouCompatible, hasNonTenhouTiles } from '../core/tenhou.js';
 import { tenhouToGame } from '../core/tenhouImport.js';
 import type { Game } from '../core/model.js';
@@ -263,9 +263,10 @@ function openExportDialog() {
     body: [
       ...warning,
       el('div', { class: 'export-row' }, [
-        el('button', { class: 'btn has-icon primary', onClick: exportPdf }, [icon('download'), 'Download PDF']),
-        el('span', { class: 'muted' }, ['Rendered by PaifuPlus — re-importable']),
+        el('button', { class: 'btn has-icon primary', onClick: () => exportPdf('en') }, [icon('download'), 'Paifu PDF (English)']),
+        el('button', { class: 'btn has-icon primary', onClick: () => exportPdf('ja') }, [icon('download'), 'Paifu PDF (日本語)']),
       ]),
+      el('div', { class: 'export-row' }, [el('span', { class: 'muted' }, ['PAIFUN-style paifu, rendered by PaifuPlus — re-importable'])]),
       el('div', { class: 'export-row' }, [
         el('button', { class: 'btn has-icon', onClick: () => { downloadJson(); flash('Downloaded JSON'); } }, [icon('download'), 'Download Tenhou JSON']),
         el('button', { class: 'btn has-icon', onClick: copyJson }, [icon('content_copy'), 'Copy JSON']),
@@ -283,10 +284,10 @@ function openInTenhou() {
   window.open(url, '_blank', 'noopener');
 }
 
-async function exportPdf() {
+async function exportPdf(lang: 'en' | 'ja') {
   try {
-    const bytes = await gameToPdf(state.game);
-    downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), baseName() + '.pdf');
+    const bytes = await gameToPaifuPdf(state.game, lang);
+    downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `${baseName()}_${lang}.pdf`);
     flash('Downloaded PDF');
   } catch (err) { alert('PDF export failed: ' + (err as Error).message); }
 }
