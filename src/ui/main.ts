@@ -263,8 +263,18 @@ function openExportDialog() {
         el('button', { class: 'btn has-icon', onClick: () => { downloadJson(); flash('Downloaded JSON'); } }, [icon('download'), 'Download Tenhou JSON']),
         el('button', { class: 'btn has-icon', onClick: copyJson }, [icon('content_copy'), 'Copy JSON']),
       ]),
+      el('div', { class: 'export-row' }, [
+        el('button', { class: 'btn has-icon', onClick: openInTenhou }, [icon('open_in_new'), 'Open in Tenhou viewer']),
+        el('span', { class: 'muted' }, ['tenhou.net/5']),
+      ]),
     ],
   });
+}
+
+/** Open the current log in tenhou's online viewer (data rides in the URL fragment). */
+function openInTenhou() {
+  const url = 'https://tenhou.net/5/#json=' + encodeURIComponent(jsonText());
+  window.open(url, '_blank', 'noopener');
 }
 
 async function exportPdf() {
