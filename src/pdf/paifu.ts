@@ -189,25 +189,38 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
       const e = await text(str, px, color, bold); const h = px, w = h * e.aspect; drawImgTL(e.img, x, topY, w, h); return w;
     };
 
+    const labelW = 46, rowGap = 3, bandGap = 10, headerH = 13, GAP = 8, boxPad = 8;
+    const boxBorder = rgb(0.72, 0.72, 0.72);
+
     let y = PH - M;
-    // Title + round
-    if (game.meta.title[0]) { await drawText(game.meta.title[0], M, y, 13, '#111', true); y -= 17; }
-    await drawText(L.round(Math.floor(k.round / 4), (k.round % 4) + 1, k.honba, k.riichiSticks), M, y, 12, '#111', true);
-
-    // Dora indicators (right of the round line)
-    if (k.doraIndicators.length) {
-      let dx = M + 240; const dth = 20, dtw = dth * 0.75;
-      dx += (await drawText(L.dora, dx, y, 11)) + 4;
-      for (const d of k.doraIndicators) { drawImgTL(await tile(d), dx, y + 2, dtw, dth); dx += dtw + 1; }
-      if (k.uraIndicators.length) {
-        dx += 6; dx += (await drawText(L.ura, dx, y, 11)) + 4;
-        for (const u of k.uraIndicators) { drawImgTL(await tile(u), dx, y + 2, dtw, dth); dx += dtw + 1; }
+    // ---- game-info box: title, round line, and dora / ura indicators, kept in
+    // its own bordered section so the tiles never bleed into a player's band ----
+    {
+      const padTop = 7, padBot = 7, lineGap = 4;
+      const hasTitle = !!game.meta.title[0];
+      const titleH = hasTitle ? 12 + lineGap : 0;
+      const dth = 16, dtw = dth * 0.75;
+      const lineH = k.doraIndicators.length ? 18 : 13;
+      const boxTop = y;
+      const boxBottom = boxTop - padTop - titleH - lineH - padBot;
+      page.drawRectangle({ x: M - 4, y: boxBottom, width: CW + 8, height: boxTop - boxBottom, borderColor: boxBorder, borderWidth: 0.75 });
+      let cy = boxTop - padTop;
+      if (hasTitle) { await drawText(game.meta.title[0], M + boxPad, cy, 12, INK, true); cy -= titleH; }
+      const rw = await drawText(L.round(Math.floor(k.round / 4), (k.round % 4) + 1, k.honba, k.riichiSticks), M + boxPad, cy, 12, INK, true);
+      if (k.doraIndicators.length) {
+        let dx = Math.max(M + boxPad + 200, M + boxPad + rw + 20);
+        dx += (await drawText(L.dora, dx, cy, 11, INK)) + 4;
+        for (const d of k.doraIndicators) { drawImgTL(await tile(d), dx, cy + 2, dtw, dth); dx += dtw + 1; }
+        if (k.uraIndicators.length) {
+          dx += 6; dx += (await drawText(L.ura, dx, cy, 11, INK)) + 4;
+          for (const u of k.uraIndicators) { drawImgTL(await tile(u), dx, cy + 2, dtw, dth); dx += dtw + 1; }
+        }
       }
+      y = boxBottom - bandGap;
     }
-    y -= 14;
 
-    // Compute a tile size that fits the widest row and four bands on the page.
-    const labelW = 46, rowGap = 3, bandGap = 10, headerH = 13, GAP = 8;
+    // Compute a tile size that fits the widest row and the four bands that
+    // remain below the info box.
     const rowsOf = (p: PlayerHand) => {
       const draws = p.turns.length;                       // ツモ cells (incl. ↓ / gaps)
       const disc = p.turns.filter((t) => t.discard !== undefined).length;
@@ -218,11 +231,9 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
     const availRowW = CW - labelW;
     let tileW = Math.min(20, availRowW / maxCells);
     let tileH = tileW / 0.75;
-    // height budget: header block (~34) + 4 bands (each with two GAPs and a
-    // riichi-label strip below the discards)
-    const budget = (PH - 2 * M) - 40;
+    const budget = y - M; // vertical room left below the info box for four bands
     const bandH = () => headerH + 8 + 2 * GAP + 4 * (tileH + rowGap);
-    while (bandH() * 4 + bandGap * 3 > budget && tileH > 8) { tileH -= 0.5; tileW = tileH * 0.75; }
+    while (bandH() * 4 + bandGap * 4 > budget && tileH > 8) { tileH -= 0.5; tileW = tileH * 0.75; }
 
     // Players in current-seat order E,S,W,N (fixed index (round+seat)%4).
     for (let s = 0; s < 4; s++) {
@@ -239,9 +250,12 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
       const isLoser = win.kind === 'ron' && win.loser === p.seat;
       const delta = p.scoreDelta;
       const marker = isWinner ? (win.kind === 'tsumo' ? L.tsumoWin : L.ron) : isLoser ? L.dealin : '';
-      const head = `${L.seat(seat)}  ${p.name}　${L.start}${p.startScore}　${L.delta}${delta >= 0 ? '+' : ''}${delta}　${L.end}${p.startScore + delta}`;
-      let hx = M + (await drawText(head, M, yy, 10, '#111')) + 8;
+      // Left: seat + name (+ result marker). Right: scores, right-aligned.
+      let hx = M + boxPad + (await drawText(`${L.seat(seat)}  ${p.name}`, M + boxPad, yy, 10, INK)) + 8;
       if (marker) await drawText(marker, hx, yy, 10, isLoser ? '#c51405' : '#1668c5', true);
+      const scoreStr = `${L.start}${p.startScore}　${L.delta}${delta >= 0 ? '+' : ''}${delta}　${L.end}${p.startScore + delta}`;
+      const se = await text(scoreStr, 10, INK); const sw = 10 * se.aspect;
+      drawImgTL(se.img, M + CW - sw, yy, sw, 10);
       yy -= headerH;
 
       const rowLabel = async (lab: string) => { await drawText(lab, M, yy - (tileH - 9) / 2, 9, INK); };
@@ -299,7 +313,7 @@ export async function gameToPaifuPdf(game: Game, lang: PaifuLang): Promise<Uint8
 
       // Box the whole band.
       const boxTop = top + 4, boxBottom = yy + 2;
-      page.drawRectangle({ x: M - 4, y: boxBottom, width: CW + 8, height: boxTop - boxBottom, borderColor: rgb(0.72, 0.72, 0.72), borderWidth: 0.75 });
+      page.drawRectangle({ x: M - 4, y: boxBottom, width: CW + 8, height: boxTop - boxBottom, borderColor: boxBorder, borderWidth: 0.75 });
 
       return yy;
     }
