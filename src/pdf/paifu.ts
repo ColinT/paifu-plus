@@ -75,7 +75,7 @@ const LABELS: Record<PaifuLang, Labels> = {
     riichi: 'Riichi', ron: 'Ron', tsumoWin: 'Tsumo', dealin: 'Deal-in', draw: 'Draw',
     honba: 'Honba', sticks: 'Sticks',
     call: { chi: 'Chi', pon: 'Pon', daiminkan: 'Kan', kakan: 'Pon', ankan: 'Kan' },
-    round: (w, n, honba, sticks) => `${WINDS_EN[w]} ${n} Honba ${honba}${sticks ? ` · ${sticks} sticks` : ''}`,
+    round: (w, n, honba, sticks) => `${WINDS_EN[w]} ${n} Honba ${honba} Sticks ${sticks}`,
     seat: (s) => WINDS_EN[s],
   },
 };
