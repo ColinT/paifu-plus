@@ -98,7 +98,7 @@ button, input, select { font: inherit; color: inherit; }
    (the horizontal rotation of the vertical 2×4 stick). The pips live on a child
    whose single-dot tile is sized 25% × 50%, so it repeats 4× across and 2× down. */
 .pt-stick.honba { width: 28px; height: 13px; border-radius: 3px; border-color: rgba(0,0,0,.5); background: linear-gradient(#efeae0, #ddd6c8); }
-.pt-stick.honba .pips { position: absolute; inset: 0; background-image: radial-gradient(circle, #2b2b2b 0 1.5px, transparent 2px); background-size: 25% 50%; }
+.pt-stick.honba .pips { position: absolute; inset: 1px 4px; background-image: radial-gradient(circle, #2b2b2b 0 1.5px, transparent 2px); background-size: 25% 50%; }
 .station { padding: 2px; display: flex; flex-direction: column; overflow: visible; align-self: center; justify-self: center; }
 .station-top { grid-area: 1 / 2; } .station-bottom { grid-area: 3 / 2; }
 .station-left { grid-area: 2 / 1; } .station-right { grid-area: 2 / 3; }
