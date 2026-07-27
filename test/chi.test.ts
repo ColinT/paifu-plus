@@ -38,6 +38,18 @@ describe('chi run disambiguation', () => {
     expect(r.diagnostics.some((d) => /run/.test(d.message))).toBe(true);
   });
 
+  it('warns on an ambiguous chi when no run is named (hand allows several)', () => {
+    const r = parseStream(base('chi'));
+    expect(r.diagnostics.some((d) => d.severity === 'warn' && /ambiguous chi/.test(d.message))).toBe(true);
+  });
+
+  it('does not warn when a run is named, or when only one run is possible', () => {
+    expect(parseStream(base('chi46m')).diagnostics.some((d) => /ambiguous chi/.test(d.message))).toBe(false);
+    // Only 567m is possible: East discards 5m, South holds 67m (no 3m/4m).
+    const one = 'e1 5m123456789p1234s 6789m123p123456s 123456789m1234p 123456789s1234p 5m chi 1p ryuukyoku';
+    expect(parseStream(one).diagnostics.some((d) => /ambiguous chi/.test(d.message))).toBe(false);
+  });
+
   it('round-trips: the chosen run survives gameToStream → parseStream', () => {
     const g = parseStream(base('chi46m')).game;
     const stream = gameToStream(g);

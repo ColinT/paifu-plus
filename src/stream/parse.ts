@@ -346,10 +346,19 @@ export function parseStream(input: string): StreamParseResult {
       }
       pair = [want[0], want[1]];
     } else {
+      // Collect every run the hand could complete; default to the lowest, but
+      // warn when there's more than one so the transcriber can disambiguate.
+      const viable: [number, number][] = [];
       for (const [a, b] of [[r - 2, r - 1], [r - 1, r + 1], [r + 1, r + 2]]) {
         if (a < 1 || b > 9) continue;
         const ta = suitBase + a, tb = suitBase + b;
-        if (cp.hand.some((h) => normalizeRed(h) === ta) && cp.hand.some((h) => normalizeRed(h) === tb)) { pair = [ta, tb]; break; }
+        if (cp.hand.some((h) => normalizeRed(h) === ta) && cp.hand.some((h) => normalizeRed(h) === tb)) viable.push([ta, tb]);
+      }
+      pair = viable[0] ?? null;
+      if (pair && viable.length > 1) {
+        const run = tilesToNotation([pair[0], n, pair[1]].sort((a, b) => a - b));
+        const alt = tilesToNotation(viable[1]);
+        warn(tok, `ambiguous chi of ${tilesToNotation([tile])} — using ${run}; name the run to change it, e.g. chi${alt}`);
       }
     }
     if (!pair) { warn(tok, `chi tiles for ${tilesToNotation([tile])} not in hand`); return []; }
