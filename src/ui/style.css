@@ -151,12 +151,18 @@ button, input, select { font: inherit; color: inherit; }
 }
 .river .bt.riichi .tf { transform: rotate(90deg); }
 
-.melds { display: flex; gap: 3px; --h: 30px; }
+/* row-reverse so the first-called meld sits toward the player's right (which,
+   after each seat's rotation, puts it nearest the player — e.g. lowest for the
+   left seat). */
+.melds { display: flex; flex-direction: row-reverse; gap: 3px; --h: 30px; }
 /* Called melds gravitate toward the seat's own edge (bottom seat → bottom,
    left seat → left, …) rather than floating in the corner cell. */
 .melds-bottom { grid-area: 3 / 3; align-self: end; } .melds-top { grid-area: 1 / 1; transform: rotate(180deg); align-self: start; }
 .melds-right { grid-area: 1 / 3; transform: rotate(270deg); justify-self: end; } .melds-left { grid-area: 3 / 1; transform: rotate(90deg); justify-self: start; }
-.meld { display: inline-flex; gap: 1px; background: rgba(255,255,255,.08); border-radius: 3px; padding: 1px; }
+/* align-items:flex-end shares a baseline: the shorter landscape (called) tile
+   sits on the meld's bottom edge, which each seat's rotation carries to the
+   player's side (e.g. the left edge for the left seat). */
+.meld { display: inline-flex; align-items: flex-end; gap: 1px; background: rgba(255,255,255,.08); border-radius: 3px; padding: 1px; }
 .meld .bt.called { width: var(--h); height: calc(var(--h) * 0.75); }
 .meld .bt.called .tf { transform: rotate(90deg); }
 
