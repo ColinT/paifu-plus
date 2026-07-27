@@ -101,7 +101,7 @@ function panel(title: string, key: string, body: HTMLElement, opts: { collapsed?
 }
 
 // stream panel
-const streamInput = el('textarea', { class: 'stream-input', spellcheck: 'false', placeholder: 'e1 d5m  Alice:123456789m1234z1z  Bob:…  Carol:…  Dave:…  1z  9p 8p  …' }) as HTMLTextAreaElement;
+const streamInput = el('textarea', { class: 'field-control mono stream-input', spellcheck: 'false', placeholder: 'e1 d5m  Alice:123456789m1234z1z  Bob:…  Carol:…  Dave:…  1z  9p 8p  …' }) as HTMLTextAreaElement;
 const diagEl = el('div', { class: 'diagnostics' });
 
 // Quick-edit row: fill in the current hand's dora indicator and each haipai
@@ -109,8 +109,8 @@ const diagEl = el('div', { class: 'diagnostics' });
 // live play tokens. Fields reflect the active kyoku and edit it in place.
 const WINDS = ['E', 'S', 'W', 'N'];
 const isDefaultName = (n: string) => !n || /^Player \d$/.test(n);
-const doraField = el('input', { class: 'q-in', spellcheck: 'false', placeholder: 'dora 6p', title: 'Dora indicator — the dead-wall tile (0p = red 5p)' }) as HTMLInputElement;
-const uraField = el('input', { class: 'q-in', spellcheck: 'false', placeholder: 'ura 3s', title: 'Ura-dora indicator(s), revealed under a riichi win' }) as HTMLInputElement;
+const doraField = el('input', { class: 'field-control mono q-in', spellcheck: 'false', placeholder: 'dora 6p', title: 'Dora indicator — the dead-wall tile (0p = red 5p)' }) as HTMLInputElement;
+const uraField = el('input', { class: 'field-control mono q-in', spellcheck: 'false', placeholder: 'ura 3s', title: 'Ura-dora indicator(s), revealed under a riichi win' }) as HTMLInputElement;
 const nameFields: HTMLInputElement[] = [];
 const scoreFields: HTMLInputElement[] = [];
 const haipaiFields: HTMLInputElement[] = [];
@@ -123,9 +123,9 @@ const quickRow = el('div', { class: 'stream-quick' }, [
 ]);
 for (let s = 0; s < 4; s++) {
   const lbl = el('span', { class: 'q-lbl' }, [WINDS[s]]);
-  const nameInp = el('input', { class: 'q-in q-name', spellcheck: 'false', placeholder: 'name' }) as HTMLInputElement;
-  const scoreInp = el('input', { class: 'q-in q-score', type: 'number', min: '0', step: '100', placeholder: '25000', title: 'Starting points' }) as HTMLInputElement;
-  const inp = el('input', { class: 'q-in q-hp', spellcheck: 'false', placeholder: 'haipai' }) as HTMLInputElement;
+  const nameInp = el('input', { class: 'field-control q-in q-name', spellcheck: 'false', placeholder: 'name' }) as HTMLInputElement;
+  const scoreInp = el('input', { class: 'field-control mono q-in q-score', type: 'number', min: '0', step: '100', placeholder: '25000', title: 'Starting points' }) as HTMLInputElement;
+  const inp = el('input', { class: 'field-control mono q-in q-hp', spellcheck: 'false', placeholder: 'haipai' }) as HTMLInputElement;
   seatLabels.push(lbl); nameFields.push(nameInp); scoreFields.push(scoreInp); haipaiFields.push(inp);
   quickRow.append(el('div', { class: 'q-field' }, [lbl, el('div', { class: 'q-namerow' }, [nameInp, scoreInp]), inp]));
 }
@@ -191,7 +191,7 @@ const jsonBody = el('div', { class: 'json-pane' });
 
 // Game title lives at the top of the editor (it's the name a save is stored under).
 const titleInput = el('input', {
-  class: 'game-title-in', spellcheck: 'false', placeholder: 'Untitled game', 'aria-label': 'Game title',
+  class: 'field-control game-title-in', spellcheck: 'false', placeholder: 'Untitled game', 'aria-label': 'Game title',
   onInput: (e: Event) => { state.game.meta.title[0] = (e.target as HTMLInputElement).value; renderBoardPanel(); renderJson(); },
 }) as HTMLInputElement;
 const titleBar = el('div', { class: 'game-title-bar' }, [titleInput]);
@@ -228,7 +228,7 @@ function renderMeta() {
   clear(metaEl);
   const g = state.game.meta;
   const names = el('div', { class: 'names' });
-  for (let i = 0; i < 4; i++) names.append(el('label', { class: 'field' }, [`P${i}`, el('input', { value: g.names[i], onInput: (e: Event) => { g.names[i] = (e.target as HTMLInputElement).value; renderJson(); } })]));
+  for (let i = 0; i < 4; i++) names.append(el('label', { class: 'field' }, [`P${i}`, el('input', { class: 'field-control', value: g.names[i], onInput: (e: Event) => { g.names[i] = (e.target as HTMLInputElement).value; renderJson(); } })]));
   metaEl.append(names);
   const aka = el('input', { type: 'checkbox', onChange: (e: Event) => { g.rule.aka = (e.target as HTMLInputElement).checked ? 1 : 0; renderJson(); } }) as HTMLInputElement;
   aka.checked = !!g.rule.aka;
@@ -485,7 +485,7 @@ function openImportDialog() {
   // Scope: replace the whole game, or slot one round into the current game.
   let scope: Scope = 'game';
   const nextRound = state.game.kyokus.length ? Math.min(15, state.game.kyokus[state.game.kyokus.length - 1].round + 1) : 0;
-  const roundSel = el('select', { class: 'round-sel' }, Array.from({ length: 16 }, (_, r) => el('option', { value: String(r) }, [roundName(r)]))) as HTMLSelectElement;
+  const roundSel = el('select', { class: 'field-control round-sel' }, Array.from({ length: 16 }, (_, r) => el('option', { value: String(r) }, [roundName(r)]))) as HTMLSelectElement;
   roundSel.value = String(nextRound);
   const segGame = el('button', { class: 'btn seg', onClick: () => setScope('game') }, ['Full game']);
   const segRound = el('button', { class: 'btn seg', onClick: () => setScope('round') }, ['Single round']);
@@ -508,7 +508,7 @@ function openImportDialog() {
   drop.addEventListener('dragleave', () => drop.classList.remove('over'));
   drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); const f = (e as DragEvent).dataTransfer?.files?.[0]; if (f) void handleFile(f); });
 
-  const paste = el('textarea', { class: 'paste-json', spellcheck: 'false', placeholder: '…or paste Tenhou/6 JSON here' }) as HTMLTextAreaElement;
+  const paste = el('textarea', { class: 'field-control mono paste-json', spellcheck: 'false', placeholder: '…or paste Tenhou/6 JSON here' }) as HTMLTextAreaElement;
   const dlg = openDialog({
     title: 'Import',
     body: [

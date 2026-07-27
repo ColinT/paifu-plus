@@ -3,10 +3,42 @@
   --fg: #e6e9ef; --muted: #8b93a2; --accent: #4f9cff; --danger: #ff5c6c;
   --m: #e0a85a; --p: #5aa0e0; --s: #5ac97a; --z: #c9b8d6; --aka: #ff5c5c;
   --radius: 8px;
+
+  /* Editable-field tokens — the single source of truth for how every text /
+     number / textarea / select control looks. See the FIELD STYLE GUIDE below. */
+  --field-bg: var(--panel2);
+  --field-border: var(--line);
+  --field-border-hover: var(--muted);
+  --field-focus: var(--accent);
+  --field-radius: 6px;
+  --field-pad: 6px 8px;
+  --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
 button, input, select { font: inherit; color: inherit; }
+
+/* ============================================================================
+   FIELD STYLE GUIDE
+   Every editable control shares one look via the `.field-control` class:
+     • fill        var(--field-bg)      (a shade lighter than its surface)
+     • border      var(--field-border), → var(--field-border-hover) on hover,
+                                          → var(--field-focus) on focus
+     • never a default focus outline; radius var(--field-radius); pad var(--field-pad)
+   Add `.mono` for code-like fields (tile notation, the stream DSL, JSON paste).
+   Give a field ONLY its own geometry locally (width, min-height/resize for a
+   textarea, right-align + width for a number, the title's larger type). Do NOT
+   restate background / border / radius / focus — that's what the token set is
+   for. New fields: `el('input', { class: 'field-control …' })`.
+   ========================================================================== */
+.field-control { background: var(--field-bg); border: 1px solid var(--field-border); border-radius: var(--field-radius); padding: var(--field-pad); color: var(--fg); }
+.field-control::placeholder { color: var(--muted); }
+.field-control:hover { border-color: var(--field-border-hover); }
+.field-control:focus { outline: none; border-color: var(--field-focus); }
+.field-control.mono { font-family: var(--mono); }
+/* Number fields drop native spinners for a uniform look (type to edit). */
+.field-control[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+.field-control[type="number"]::-webkit-inner-spin-button, .field-control[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
 #app { padding: 12px; min-height: 100vh; display: flex; flex-direction: column; gap: 10px; }
 .toolbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--bg); padding: 4px 0 8px; border-bottom: 1px solid var(--line); box-shadow: 0 4px 8px -4px rgba(0,0,0,.5); }
@@ -14,10 +46,8 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Game title, at the top of the editor (the name a save is stored under). */
 .game-title-bar { display: flex; align-items: center; gap: 10px; }
-.game-title-in { flex: 1 1 auto; min-width: 0; background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; color: var(--fg); font-size: 18px; font-weight: 700; }
-.game-title-in::placeholder { color: var(--muted); font-weight: 600; }
-.game-title-in:hover { border-color: var(--muted); }
-.game-title-in:focus { outline: none; border-color: var(--accent); }
+.game-title-in { flex: 1 1 auto; min-width: 0; font-size: 18px; font-weight: 700; }
+.game-title-in::placeholder { font-weight: 600; }
 
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .panel-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; user-select: none; background: var(--panel2); }
@@ -36,8 +66,7 @@ button, input, select { font: inherit; color: inherit; }
 .replay-buttons { display: flex; align-items: center; gap: 6px; }
 .replay-slider { width: 100%; max-width: 760px; accent-color: var(--accent); }
 .replay-count { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 70px; text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
-.replay-count .step-input { width: 48px; text-align: right; background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; color: var(--fg); padding: 3px 4px; font-variant-numeric: tabular-nums; }
-.replay-count .step-input:focus { border-color: var(--accent); outline: none; }
+.replay-count .step-input { width: 48px; text-align: right; padding: 3px 6px; font-variant-numeric: tabular-nums; }
 
 .share-dd { position: relative; }
 .share-dd > summary { list-style: none; }
@@ -60,23 +89,19 @@ button, input, select { font: inherit; color: inherit; }
 .comment { display: flex; align-items: center; gap: 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
 .comment-text { flex: 1; font-size: 13px; }
 .comment-add { display: flex; gap: 6px; }
-.comment-input { flex: 1; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; color: var(--fg); }
-.comment-input:focus { outline: none; border-color: var(--accent); }
+.comment-input { flex: 1; }
 
 .stream-panel { display: flex; flex-direction: column; gap: 8px; }
-.stream-quick { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; padding: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; }
+/* The quick-edit box is a dark inset so its (lighter) fields read as fields. */
+.stream-quick { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--field-radius); }
 .q-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); flex: 1; min-width: 128px; }
 .q-lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .q-lbl.turn { color: var(--accent); font-weight: 700; }
-.q-in { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 5px 7px; color: var(--fg); font: 13px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; }
-.q-in:focus { outline: none; border-color: var(--accent); }
-.q-name { font-family: inherit; }
+.q-in { width: 100%; font-size: 13px; line-height: 1.5; }
 .q-namerow { display: flex; gap: 4px; }
 .q-namerow .q-name { flex: 1 1 auto; width: auto; min-width: 0; }
-.q-score { flex: 0 0 62px; width: auto; min-width: 0; text-align: right; appearance: textfield; -moz-appearance: textfield; }
-.q-score::-webkit-inner-spin-button, .q-score::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.stream-input { width: 100%; min-height: 120px; resize: vertical; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; color: var(--fg); font: 14px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace; letter-spacing: .3px; }
-.stream-input:focus { outline: none; border-color: var(--accent); }
+.q-score { flex: 0 0 62px; width: auto; min-width: 0; text-align: right; }
+.stream-input { width: 100%; min-height: 120px; resize: vertical; padding: 10px; font-size: 14px; line-height: 1.6; letter-spacing: .3px; }
 .diagnostics { font-size: 12px; }
 .diag-ok { color: var(--s); }
 .diag-summary { color: var(--muted); margin-bottom: 4px; }
@@ -247,14 +272,12 @@ button, input, select { font: inherit; color: inherit; }
 .dropzone:hover, .dropzone.over { border-color: var(--accent); background: rgba(79, 156, 255, .08); }
 .dropzone .mi { width: 30px; height: 30px; opacity: .8; }
 .dropzone .dz-main { color: var(--fg); font-size: 13px; }
-.paste-json { width: 100%; box-sizing: border-box; min-height: 96px; resize: vertical; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); padding: 8px; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-.paste-json:focus { border-color: var(--accent); outline: none; }
+.paste-json { width: 100%; min-height: 96px; resize: vertical; padding: 8px; font-size: 12px; line-height: 1.4; }
 .export-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 /* Import/Export scope selector (single round vs full game). */
 .export-scope { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .btn.seg { padding: 5px 12px; }
 .round-sel-wrap { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
-.round-sel { background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; color: var(--fg); }
 .dialog-warning { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.45;
   color: #ffd98a; background: rgba(224, 158, 40, .12); border: 1px solid rgba(224, 158, 40, .4); border-radius: 8px; padding: 9px 11px; }
 .dialog-warning .mi { width: 18px; height: 18px; flex: 0 0 auto; fill: #ffcf6b; margin-top: 1px; }
@@ -280,7 +303,6 @@ button, input, select { font: inherit; color: inherit; }
 
 .field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
 .field.inline { flex-direction: row; align-items: center; gap: 6px; }
-.field input, .field select { background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 5px 7px; color: var(--fg); }
 .field.grow, .grow { flex: 1; }
 .num { width: 70px; } .score { width: 84px; }
 .names { display: flex; gap: 8px; }
@@ -304,7 +326,7 @@ button, input, select { font: inherit; color: inherit; }
 .players-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .player-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
 .player-head { display: flex; align-items: center; gap: 8px; }
-.player-head .name { flex: 1; background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 5px 7px; }
+.player-head .name { flex: 1; }
 .wind { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; font-weight: 700; font-size: 12px; background: var(--panel2); }
 .wind-E { color: #ff8f6b; } .wind-S { color: #6bd0ff; } .wind-W { color: #9fe37a; } .wind-N { color: #c9a2ff; }
 
@@ -312,8 +334,7 @@ button, input, select { font: inherit; color: inherit; }
 .group-label { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 3px; display: flex; gap: 8px; align-items: baseline; }
 .group-label .hint { text-transform: none; letter-spacing: 0; font-size: 10px; color: #5c6472; }
 .tile-group { display: flex; flex-direction: column; gap: 3px; }
-.notation { background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; color: var(--fg); font: 14px ui-monospace, "Cascadia Code", Consolas, monospace; letter-spacing: .5px; }
-.notation:focus { outline: none; border-color: var(--accent); }
+.notation { font-size: 14px; letter-spacing: .5px; }
 .count { font-size: 10px; color: var(--muted); align-self: center; padding: 0 4px; }
 .tile-row { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; min-height: 30px; }
 .chip.riichi { border-color: var(--danger); box-shadow: inset 0 -3px 0 var(--danger); }
@@ -339,7 +360,7 @@ button, input, select { font: inherit; color: inherit; }
 .result-box .deltas { color: var(--muted); }
 
 .json-head { padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.json { margin: 0; padding: 10px; overflow: auto; font: 11px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; color: #b8c2d0; white-space: pre-wrap; word-break: break-word; flex: 1; }
+.json { margin: 0; padding: 10px; overflow: auto; font: 11px/1.4 var(--mono); color: #b8c2d0; white-space: pre-wrap; word-break: break-word; flex: 1; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 50; }
 .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; max-width: 90vw; }

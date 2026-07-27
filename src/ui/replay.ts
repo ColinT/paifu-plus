@@ -153,7 +153,7 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
     for (const c of here) {
       box.append(el('div', { class: 'comment' }, [el('span', { class: 'comment-text' }, [c.text]), el('button', { class: 'mini danger', title: 'Delete', onClick: () => removeComment(c) }, ['×'])]));
     }
-    const inp = el('input', { class: 'comment-input', placeholder: 'Add a comment at this move…', onKeydown: (e: KeyboardEvent) => { if (e.key === 'Enter') { addComment((e.target as HTMLInputElement).value); } } }) as HTMLInputElement;
+    const inp = el('input', { class: 'field-control comment-input', placeholder: 'Add a comment at this move…', onKeydown: (e: KeyboardEvent) => { if (e.key === 'Enter') { addComment((e.target as HTMLInputElement).value); } } }) as HTMLInputElement;
     box.append(el('div', { class: 'comment-add' }, [inp, el('button', { class: 'btn small', onClick: () => addComment(inp.value) }, ['Add'])]));
     return box;
   }
@@ -161,7 +161,7 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
   /** Editable step number (1-indexed); jump on Enter/blur. */
   function stepInput(k: KyokuReplay): HTMLInputElement {
     const inp = el('input', {
-      type: 'number', min: '1', max: String(k.steps.length), value: String(state.step + 1), class: 'step-input',
+      type: 'number', min: '1', max: String(k.steps.length), value: String(state.step + 1), class: 'field-control step-input',
       title: 'Jump to step', onFocus: (e: Event) => (e.target as HTMLInputElement).select(),
       onChange: (e: Event) => {
         const v = Number((e.target as HTMLInputElement).value);
