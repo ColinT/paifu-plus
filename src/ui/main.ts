@@ -633,8 +633,13 @@ function openImportDialog() {
   // Scope: replace the whole game, or slot one round into the current game.
   let scope: Scope = 'game';
   const nextRound = state.game.kyokus.length ? Math.min(15, state.game.kyokus[state.game.kyokus.length - 1].round + 1) : 0;
+  // If the active round is completely empty (nothing beyond maybe its own token),
+  // default to importing INTO it rather than appending after it.
+  const activeToks = activeSlotText().split(/[\s,]+/).filter(Boolean);
+  const activeEmpty = activeToks.length === 0 || (activeToks.length === 1 && isRoundTok(activeToks[0]));
+  const defaultRound = activeEmpty ? (state.game.kyokus[state.activeKyoku]?.round ?? nextRound) : nextRound;
   const roundSel = el('select', { class: 'field-control round-sel' }, Array.from({ length: 16 }, (_, r) => el('option', { value: String(r) }, [roundName(r)]))) as HTMLSelectElement;
-  roundSel.value = String(nextRound);
+  roundSel.value = String(defaultRound);
   const segGame = el('button', { class: 'btn seg', onClick: () => setScope('game') }, ['Full game']);
   const segRound = el('button', { class: 'btn seg', onClick: () => setScope('round') }, ['Single round']);
   const roundWrap = el('label', { class: 'round-sel-wrap muted' }, ['into ', roundSel]);
