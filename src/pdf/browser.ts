@@ -45,7 +45,9 @@ export interface ImportResult {
  */
 export async function readEmbeddedLog(data: ArrayBuffer): Promise<any | null> {
   try {
-    const doc = await getDocument({ data: new Uint8Array(data) }).promise;
+    // pdfjs transfers its `data` buffer to the worker and detaches it, so give it
+    // a private copy — otherwise the caller's ArrayBuffer dies before importPdf.
+    const doc = await getDocument({ data: new Uint8Array(data.slice(0)) }).promise;
     const att = await doc.getAttachments();
     if (att) {
       for (const key of Object.keys(att)) {
@@ -62,7 +64,7 @@ export async function readEmbeddedLog(data: ArrayBuffer): Promise<any | null> {
 
 export async function importPdf(data: ArrayBuffer): Promise<ImportResult> {
   const doc = await getDocument({
-    data: new Uint8Array(data),
+    data: new Uint8Array(data.slice(0)),  // private copy; pdfjs detaches its buffer
     cMapUrl: new URL('cmaps/', document.baseURI).href,
     cMapPacked: true,
   }).promise;
