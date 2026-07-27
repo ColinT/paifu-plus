@@ -56,6 +56,8 @@ export function spliceRoundHeader(text: string, kyokuIndex: number, edit: Header
   const kyokuEnd = nextRound ? nextRound.start : text.length;   // char offset where this hand ends
 
   // Walk forward over the header region (dora/ura tokens + four haipai seats).
+  // A bare single tile is a discard (haipai are 13–14 tiles), so it ends the
+  // header — matching the parser — and keeps live-recorded plays out of it.
   let seat = 0, headerEnd = round.end, hi = ri + 1;
   for (; hi < endTok && seat < 4; hi++) {
     const t = tk[hi];
@@ -63,8 +65,10 @@ export function spliceRoundHeader(text: string, kyokuIndex: number, edit: Header
     if (t.text === '?') { seat++; headerEnd = t.end; continue; }
     const colon = t.text.indexOf(':');
     const body = colon >= 0 ? t.text.slice(colon + 1) : t.text;
+    const n = parseTileNotation(body).length;
+    if (n === 1 && colon < 0) break;                  // a bare discard — header is over
     headerEnd = t.end;
-    if (parseTileNotation(body).length) seat++;       // a filled seat (else a bare name token)
+    if (n) seat++;                                    // a filled seat (else a bare name token)
   }
 
   let head = '';

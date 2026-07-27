@@ -348,6 +348,11 @@ export function parseStream(input: string): StreamParseResult {
       const body = colon >= 0 ? t.slice(colon + 1) : t;
       const tiles = parseTileNotation(body);
       if (!tiles.length) { pendingName = t; continue; } // a non-tile token = the name
+      // A bare single tile can't be a haipai (those are 13–14 tiles): the haipai
+      // section is over. Leave the remaining seats unknown and reprocess this
+      // token as the first play — so live-recorded discards aren't eaten as haipai.
+      if (tiles.length === 1 && colon < 0) { phase = 'play'; turn = 0; expect = 'discard'; midTurnSeat = 0; }
+      else {
       const p = players![haipaiSeat];
       p.name = name || pendingName; p.hand = tiles.slice();
       const expected = haipaiSeat === 0 ? 14 : 13;
@@ -359,6 +364,7 @@ export function parseStream(input: string): StreamParseResult {
       else p.haipai = p.hand.slice();
       advance();
       continue;
+      }
     }
 
     // phase === 'play'

@@ -50,6 +50,19 @@ describe('spliceRoundHeader', () => {
     expect(out).toBe('e1 ? ? ? ? 1z ryuukyoku e2 di3s ? ? ? ? 2z ryuukyoku');
   });
 
+  it('does not eat live-recorded discards (no placeholders) as haipai', () => {
+    // Recorder typed the round then discards, without "? ? ? ?". Filling a seat
+    // must insert placeholders and keep every discard.
+    const out = spliceRoundHeader('e1 1m 9p 2z 5s 3p 7z', 0, {
+      ...blank, haipai: ['', '', '', '123456789p1234z'],
+    });
+    expect(out).toBe('e1 ? ? ? 123456789p1234z 1m 9p 2z 5s 3p 7z');
+    // and the parser agrees: a bare single tile ends the haipai section
+    const k = parseStream('e1 1m 9p 2z 5s 3p 7z').game.kyokus[0];
+    expect(k.players.every((p) => p.haipai.length === 0)).toBe(true);   // all haipai unknown
+    expect(k.players.some((p) => p.turns.some((t) => t.discard !== undefined))).toBe(true); // discards recorded
+  });
+
   it('returns text unchanged when the round token is absent', () => {
     expect(spliceRoundHeader('', 0, { ...blank, dora: '6p' })).toBe('');
   });
