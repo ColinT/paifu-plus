@@ -22,6 +22,9 @@
  *               or absolute seat — wp/westpon, eastpon, southpon, npon.
  *             An explicitly-attributed pon/kan backfills the caller's hand
  *             (and haipai) with the needed tiles if they weren't entered.
+ *             A chi can name the run to disambiguate which tiles it uses —
+ *               chi46m (the two hand tiles) or chi456m (the whole run); the
+ *               default is the lowest run available in hand.
  *   result    tsumo | ron[seat] | ryuukyoku
  *
  * The parser tracks all four hands so calls attribute to the holder and
@@ -68,7 +71,12 @@ function fixedIndex(seat: Seat, round: number): Seat { return ((round + seat) % 
 
 /** Relative position of the DISCARDER as seen from the calling player. */
 type RelPos = 'shimo' | 'toimen' | 'kami';
-interface ParsedCall { kind: 'pon' | 'chi' | 'kan'; rel?: RelPos; abs?: Seat; }
+interface ParsedCall {
+  kind: 'pon' | 'chi' | 'kan'; rel?: RelPos; abs?: Seat;
+  /** For a chi, the specific tiles used to disambiguate the run (see parseCall):
+   *  the two hand tiles, or the full three-tile run. */
+  tiles?: TenhouTile[];
+}
 
 /** Caller seat given the discarder and where the discarder sits relative to the caller. */
 function callerFromRel(discarder: Seat, rel: RelPos): Seat {
@@ -99,6 +107,10 @@ function parseCall(raw: string): ParsedCall | null {
   if (/^(chi|c)$/.test(t)) return { kind: 'chi' };
   if (/^(kan|mk|minkan|daiminkan|kakan|ankan|k)$/.test(t)) return { kind: 'kan' };
   let m: RegExpExecArray | null;
+  // Chi with an explicit run to disambiguate which hand tiles complete it, e.g.
+  // "chi46m" (the two hand tiles) or "chi456m" (the whole run). Suited only.
+  if ((m = /^(?:chi|c)([0-9]+[mps])$/.exec(t))) return { kind: 'chi', tiles: parseTileNotation(m[1]) };
+  if ((m = new RegExp(`^${PREFIX}(?:chi|c)([0-9]+[mps])$`).exec(t))) return { kind: 'chi', tiles: parseTileNotation(m[2]), ...interpPrefix(m[1]) };
   if ((m = new RegExp(`^${PREFIX}(pon|p)$`).exec(t))) return { kind: 'pon', ...interpPrefix(m[1]) };
   if ((m = new RegExp(`^${PREFIX}(kan|mk|k)$`).exec(t))) return { kind: 'kan', ...interpPrefix(m[1]) };
   if ((m = new RegExp(`^${PREFIX}(chi|c)$`).exec(t))) return { kind: 'chi', ...interpPrefix(m[1]) };
@@ -301,7 +313,7 @@ export function parseStream(input: string): StreamParseResult {
       // rinshan draw + discard follow
       turn = caller; expect = 'draw';
     } else {
-      const consume = isChi ? chiConsume(cp, tile, tok) : [tile, tile];
+      const consume = isChi ? chiConsume(cp, tile, tok, call.tiles) : [tile, tile];
       for (const c of consume) removeFromHand(cp, c);
       const t = p_turn(cp);
       cp.calls.push({ type: isChi ? 'chi' : 'pon', tiles: isChi ? [tile, ...consume] : [tile, tile, tile], calledTile: tile, fromSeat, turn: t });
@@ -313,19 +325,45 @@ export function parseStream(input: string): StreamParseResult {
   /** Index of the (about-to-be) turn where a call sits in the caller's stream. */
   const p_turn = (cp: PS): number => { cp.turns.push({}); return cp.turns.length - 1; };
 
-  function chiConsume(cp: PS, tile: TenhouTile, tok: Tok): TenhouTile[] {
-    // pick two hand tiles forming a run with `tile` (same suit, sequence)
+  /** The two hand tiles consumed by a chi of `tile`. `requested` (from a
+   *  "chi46m"/"chi456m" token) forces which run when several are possible; else
+   *  the lowest run in hand is used. Returns the actual hand tiles (aka kept). */
+  function chiConsume(cp: PS, tile: TenhouTile, tok: Tok, requested?: TenhouTile[]): TenhouTile[] {
     const n = normalizeRed(tile);
     if (n >= 41) { warn(tok, 'cannot chi an honour'); return []; }
     const suitBase = Math.floor(n / 10) * 10, r = n % 10;
-    const opts = [ [r - 2, r - 1], [r - 1, r + 1], [r + 1, r + 2] ];
-    for (const [a, b] of opts) {
-      if (a < 1 || b > 9) continue;
-      const ta = suitBase + a, tb = suitBase + b;
-      if (cp.hand.some((h) => normalizeRed(h) === ta) && cp.hand.some((h) => normalizeRed(h) === tb)) return [ta, tb];
+
+    // Resolve the two hand-tile values (normalised) to consume.
+    let pair: [number, number] | null = null;
+    if (requested?.length) {
+      let want = requested.map(normalizeRed);
+      if (want.length === 3) { const i = want.indexOf(n); if (i >= 0) want.splice(i, 1); } // drop the called tile
+      if (want.length !== 2) { warn(tok, 'chi needs its two hand tiles, e.g. chi46m'); return []; }
+      const run = [n, ...want].sort((a, b) => a - b);
+      const sameSuit = run.every((v) => Math.floor(v / 10) === suitBase / 10);
+      if (!sameSuit || run[0] + 1 !== run[1] || run[1] + 1 !== run[2]) {
+        warn(tok, `chi ${tilesToNotation(requested)} with ${tilesToNotation([tile])} isn't a run`); return [];
+      }
+      pair = [want[0], want[1]];
+    } else {
+      for (const [a, b] of [[r - 2, r - 1], [r - 1, r + 1], [r + 1, r + 2]]) {
+        if (a < 1 || b > 9) continue;
+        const ta = suitBase + a, tb = suitBase + b;
+        if (cp.hand.some((h) => normalizeRed(h) === ta) && cp.hand.some((h) => normalizeRed(h) === tb)) { pair = [ta, tb]; break; }
+      }
     }
-    warn(tok, `chi tiles for ${tile} not in hand`);
-    return [];
+    if (!pair) { warn(tok, `chi tiles for ${tilesToNotation([tile])} not in hand`); return []; }
+
+    // Pull the matching actual hand tiles (so a red five in the run is kept).
+    const picked: TenhouTile[] = [];
+    const used: number[] = [];
+    for (const val of pair) {
+      let idx = cp.hand.findIndex((h, i) => !used.includes(i) && h === val);            // exact (aka-aware)
+      if (idx < 0) idx = cp.hand.findIndex((h, i) => !used.includes(i) && normalizeRed(h) === val); // else any
+      if (idx < 0) { warn(tok, `chi tiles for ${tilesToNotation([tile])} not in hand`); return []; }
+      used.push(idx); picked.push(cp.hand[idx]);
+    }
+    return picked;
   }
 
   // We track who is mid-turn (drew but not yet discarded).

@@ -13,7 +13,7 @@
  */
 
 import type { Game, Kyoku, Seat } from '../core/model.js';
-import { tilesToNotation, indicatorToDora, isAka, type TenhouTile } from '../core/tiles.js';
+import { tilesToNotation, indicatorToDora, isAka, normalizeRed, type TenhouTile } from '../core/tiles.js';
 import { gameToTenhou } from '../core/tenhou.js';
 import { buildReplay } from '../replay/replay.js';
 import type { KyokuReplay } from '../replay/replay.js';
@@ -94,7 +94,15 @@ export function kyokuToStream(k: Kyoku, rk: KyokuReplay): string {
       if (!meld) continue;
       const caller = step.active as Seat;
       const from = (meld.from ?? step.active) as Seat;
-      if (meld.type === 'chi') toks.push('chi');
+      if (meld.type === 'chi') {
+        // Emit the two hand tiles so the run is unambiguous on reparse (a chi of
+        // e.g. 5m could be 345m / 456m / 567m). Keeps any red five in the run.
+        const hand = [...meld.tiles];
+        let ci = meld.called !== undefined ? hand.indexOf(meld.called) : -1;
+        if (ci < 0 && meld.called !== undefined) ci = hand.findIndex((x) => normalizeRed(x) === normalizeRed(meld.called!));
+        if (ci >= 0) hand.splice(ci, 1);
+        toks.push('chi' + tilesToNotation(hand));
+      }
       else if (meld.type === 'pon') toks.push(relPrefix(caller, from) + 'pon');
       else if (meld.type === 'daiminkan') toks.push(relPrefix(caller, from) + 'kan');
       else toks.push('kan'); // kakan (best effort)
