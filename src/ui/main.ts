@@ -164,6 +164,15 @@ const quickFieldValues = () => ({ dora: doraField.value, ura: uraField.value, ha
 const isRoundTok = (t: string) => /^[eswn][1-4]([._\-][0-9]+){0,2}$/i.test(t);
 const hasRoundFor = (text: string, idx: number) => text.split(/[\s,]+/).filter(isRoundTok).length > idx;
 
+/** Adopt a game produced by parsing the stream, keeping the UI-only meta the
+ *  DSL doesn't encode — the game title and the aka rule flag. Without this every
+ *  reparse would reset the title to the parser's placeholder ("Transcribed"). */
+function adoptParsed(game: Game) {
+  game.meta.title = state.game.meta.title;
+  game.meta.rule = state.game.meta.rule;
+  state.game = game;
+}
+
 /** A quick-field edit: splice the new dora / ura / names / haipai into the stream. */
 function onQuickEdit() {
   const edit = quickFieldValues();
@@ -176,7 +185,7 @@ function onQuickEdit() {
   state.streamText = text; streamInput.value = text;
   const idx = state.activeKyoku;
   const { game, diagnostics, missing, pending } = parseStream(text);
-  if (game.kyokus.length) { state.game = game; state.activeKyoku = Math.min(idx, game.kyokus.length - 1); }
+  if (game.kyokus.length) { adoptParsed(game); state.activeKyoku = Math.min(idx, game.kyokus.length - 1); }
   turnState = pending ?? null;
   renderForm(); renderBoardPanel(); renderJson(); renderDiagnostics(diagnostics, missing); renderTurnIndicator();
 }
@@ -334,14 +343,14 @@ function renderDiagnostics(diags: Diagnostic[], missing: number) {
 
 function parseStreamText() {
   let { game, diagnostics, missing, pending } = parseStream(state.streamText);
-  if (game.kyokus.length) { state.game = game; state.activeKyoku = game.kyokus.length - 1; }
+  if (game.kyokus.length) { adoptParsed(game); state.activeKyoku = game.kyokus.length - 1; }
   // Flush a quick-edit that couldn't anchor earlier, now that a round exists.
   if (pendingQuickEdit && hasRoundFor(state.streamText, state.activeKyoku)) {
     const text = spliceRoundHeader(state.streamText, state.activeKyoku, quickFieldValues());
     if (text !== state.streamText) {
       state.streamText = text; streamInput.value = text;
       const r = parseStream(text);
-      if (r.game.kyokus.length) { state.game = r.game; state.activeKyoku = r.game.kyokus.length - 1; }
+      if (r.game.kyokus.length) { adoptParsed(r.game); state.activeKyoku = r.game.kyokus.length - 1; }
       diagnostics = r.diagnostics; missing = r.missing; pending = r.pending;
     }
     pendingQuickEdit = false;
