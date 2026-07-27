@@ -21,6 +21,11 @@ import { icon } from './icon.js';
 
 const state: EditorState & { streamText: string } = { game: newGame(), activeKyoku: 0, streamText: '' };
 
+// A quick-edit (name/haipai/dora/ura) typed before its round token exists has
+// nothing to anchor to; it's held here and flushed once the round is entered.
+// While pending, the fields hold unsaved input and must not be repopulated.
+let pendingQuickEdit = false;
+
 // ---- shell ----
 const app = document.getElementById('app')!;
 const toolbarEl = el('header', { class: 'toolbar' });
@@ -53,6 +58,7 @@ const replay = mountReplay(replayEl, {
     try {
       state.game = tenhouToGame(log);
       state.activeKyoku = Math.max(0, state.game.kyokus.length - 1);
+      pendingQuickEdit = false; // fresh log — quick fields reflect it
       // Populate the stream transcription with an editable rendering of the log.
       // Assigning .value directly doesn't fire 'input', so state.game (the
       // faithful decode) stays authoritative until the user actually edits.
@@ -111,6 +117,7 @@ const streamBody = el('div', { class: 'stream-panel' }, [quickRow, streamInput, 
 
 /** Mirror the active kyoku's dora, names and haipai into the quick-edit fields. */
 function populateQuickFields() {
+  if (pendingQuickEdit) return; // fields hold unsaved input — don't clobber it
   const k = state.game.kyokus[state.activeKyoku];
   if (!k) { doraField.value = ''; uraField.value = ''; nameFields.forEach((f) => (f.value = '')); haipaiFields.forEach((f) => (f.value = '')); return; }
   doraField.value = tilesToNotation(k.doraIndicators);
@@ -126,9 +133,6 @@ function populateQuickFields() {
 const quickFieldValues = () => ({ dora: doraField.value, ura: uraField.value, haipai: haipaiFields.map((f) => f.value), names: nameFields.map((f) => f.value) });
 const isRoundTok = (t: string) => /^[eswn][1-4]([._\-][0-9]+){0,2}$/i.test(t);
 const hasRoundFor = (text: string, idx: number) => text.split(/[\s,]+/).filter(isRoundTok).length > idx;
-// A quick-edit typed before the round token exists (nothing to anchor to) is
-// held here, then flushed by parseStreamText once the round is entered.
-let pendingQuickEdit = false;
 
 /** A quick-field edit: splice the new dora / ura / names / haipai into the stream. */
 function onQuickEdit() {
@@ -270,6 +274,7 @@ function parseStreamText() {
 function loadGame(game: Game) {
   state.game = game;
   state.activeKyoku = 0;
+  pendingQuickEdit = false;
   try { state.streamText = gameToStream(game); } catch { state.streamText = ''; }
   streamInput.value = state.streamText;
   clear(diagEl);
