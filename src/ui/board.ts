@@ -6,6 +6,7 @@ import type { Kyoku, PlayerHand } from '../core/model.js';
 import type { TenhouTile } from '../core/tiles.js';
 import { indicatorToDora, compareTiles } from '../core/tiles.js';
 import { tileImg, tileBack } from './tileEl.js';
+import { roundName } from './state.js';
 import { el } from './dom.js';
 
 const POS = ['bottom', 'right', 'top', 'left'] as const;
@@ -34,16 +35,12 @@ export interface BoardView {
   title?: string; // game-record / tournament name, shown in the compass
 }
 
-const WINDS_JA = ['東', '南', '西', '北'];
-/** Round label in Japanese, e.g. round 4 → "南1局" (South 1). */
-const roundJa = (round: number) => `${WINDS_JA[Math.floor(round / 4)]}${(round % 4) + 1}局`;
-
 /** Top-left compass: record name, round, honba / riichi-stick counts, and the
  *  actual dora (and ura, set apart) — not the indicators. */
 function compassEl(view: BoardView): HTMLElement {
   const deposit = view.sticks + view.seats.filter((s) => s.riichi).length; // carried + this round's bets
   const row: (Node | string)[] = [
-    el('div', { class: 'compass-round' }, [roundJa(view.round)]),
+    el('div', { class: 'compass-round' }, [roundName(view.round)]),
     el('div', { class: 'compass-mid' }, [
       el('div', { class: 'compass-count', title: `${view.honba} honba` }, [el('span', { class: 'pt-stick honba' }, [el('span', { class: 'pips' })]), String(view.honba)]),
       el('div', { class: 'compass-count', title: `${deposit} riichi stick(s) in deposit` }, [el('span', { class: 'pt-stick riichi' }), String(deposit)]),
