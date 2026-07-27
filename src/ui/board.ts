@@ -45,7 +45,7 @@ function compassEl(view: BoardView): HTMLElement {
   const row: (Node | string)[] = [
     el('div', { class: 'compass-round' }, [roundJa(view.round)]),
     el('div', { class: 'compass-mid' }, [
-      el('div', { class: 'compass-count', title: `${view.honba} honba` }, [el('span', { class: 'pt-stick honba' }), String(view.honba)]),
+      el('div', { class: 'compass-count', title: `${view.honba} honba` }, [el('span', { class: 'pt-stick honba' }, [el('span', { class: 'pips' })]), String(view.honba)]),
       el('div', { class: 'compass-count', title: `${deposit} riichi stick(s) in deposit` }, [el('span', { class: 'pt-stick riichi' }), String(deposit)]),
     ]),
   ];
