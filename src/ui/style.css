@@ -127,15 +127,16 @@ button, input, select { font: inherit; color: inherit; }
 .board-area { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 900px; }
 .board { position: relative; display: grid; grid-template-columns: 52px 1fr 52px; grid-template-rows: 52px 1fr 52px; gap: 4px; width: 100%; aspect-ratio: 1 / 0.82; background: #14351f; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
 
-/* Game-info header: a horizontal bar above the board (record / round / honba /
-   deposit / dora / ura). */
-.compass { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 7px 12px; border-radius: 10px; background: #14351f; border: 1px solid var(--line); color: #eef; }
-.compass-title { font-size: 13px; font-weight: 700; color: #cde; white-space: nowrap; }
+/* Game-info panel: record name over a row of round / honba·sticks / dora, sitting
+   as a header above the board rather than a floating overlay. */
+.compass { align-self: flex-start; padding: 5px 9px; border-radius: 8px; background: #14351f; border: 1px solid var(--line); color: #eef; line-height: 1.15; }
+.compass-title { font-size: 11px; font-weight: 700; color: #cde; white-space: nowrap; margin-bottom: 3px; }
+.compass-row { display: flex; align-items: center; gap: 12px; }
 .compass-round { font-size: 17px; font-weight: 800; white-space: nowrap; }
-.compass-count { display: flex; align-items: center; gap: 5px; font-size: 13px; font-variant-numeric: tabular-nums; }
-.compass-dora, .compass-ura { --h: 26px; display: flex; align-items: center; gap: 2px; }
-.compass-ura { margin-left: 4px; }
-.compass-lbl { font-size: 11px; color: var(--muted); margin-right: 3px; }
+.compass-mid { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.compass-count { display: flex; align-items: center; gap: 5px; }
+.compass-dora, .compass-ura { --h: 26px; display: flex; align-items: center; gap: 1px; }
+.compass-ura { margin-left: 8px; }
 .pt-stick { display: inline-block; box-sizing: border-box; width: 28px; height: 13px; border-radius: 3px; background: #f4f0eb; border: 1px solid rgba(0,0,0,.4); position: relative; }
 .pt-stick.riichi::after { content: ''; position: absolute; top: 50%; left: 50%; width: 5px; height: 5px; border-radius: 50%; background: #ce1914; transform: translate(-50%,-50%); }
 /* 100-point (honba) stick: the same bar as the riichi stick, carrying a 4×2 grid

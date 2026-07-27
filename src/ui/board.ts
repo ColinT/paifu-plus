@@ -37,18 +37,23 @@ export interface BoardView {
 
 /** Top-left compass: record name, round, honba / riichi-stick counts, and the
  *  actual dora (and ura, set apart) — not the indicators. */
-/** Game-info header: a single horizontal bar above the board (record name,
- *  round, honba, riichi deposit, dora / ura). */
+/** Game-info panel above the board: record name over a row of round /
+ *  honba·sticks / dora / ura. Sits as a header, not a floating overlay. */
 function compassEl(view: BoardView): HTMLElement {
   const deposit = view.sticks + view.seats.filter((s) => s.riichi).length; // carried + this round's bets
-  const items: (Node | string)[] = [];
-  if (view.title) items.push(el('div', { class: 'compass-title' }, [view.title]));
-  items.push(el('div', { class: 'compass-round' }, [roundName(view.round)]));
-  items.push(el('div', { class: 'compass-count', title: `${view.honba} honba` }, [el('span', { class: 'pt-stick honba' }, [el('span', { class: 'pips' })]), String(view.honba)]));
-  items.push(el('div', { class: 'compass-count', title: `${deposit} riichi stick(s) in deposit` }, [el('span', { class: 'pt-stick riichi' }), String(deposit)]));
-  if (view.dora.length) items.push(el('div', { class: 'compass-dora' }, [el('span', { class: 'compass-lbl' }, ['Dora']), ...view.dora.map((t) => miniTile(indicatorToDora(t)))]));
-  if (view.ura.length) items.push(el('div', { class: 'compass-ura' }, [el('span', { class: 'compass-lbl' }, ['Ura']), ...view.ura.map((t) => miniTile(indicatorToDora(t)))]));
-  return el('div', { class: 'compass' }, items);
+  const row: (Node | string)[] = [
+    el('div', { class: 'compass-round' }, [roundName(view.round)]),
+    el('div', { class: 'compass-mid' }, [
+      el('div', { class: 'compass-count', title: `${view.honba} honba` }, [el('span', { class: 'pt-stick honba' }, [el('span', { class: 'pips' })]), String(view.honba)]),
+      el('div', { class: 'compass-count', title: `${deposit} riichi stick(s) in deposit` }, [el('span', { class: 'pt-stick riichi' }), String(deposit)]),
+    ]),
+  ];
+  if (view.dora.length) row.push(el('div', { class: 'compass-dora' }, view.dora.map((t) => miniTile(indicatorToDora(t)))));
+  if (view.ura.length) row.push(el('div', { class: 'compass-ura' }, view.ura.map((t) => miniTile(indicatorToDora(t)))));
+  return el('div', { class: 'compass' }, [
+    ...(view.title ? [el('div', { class: 'compass-title' }, [view.title])] : []),
+    el('div', { class: 'compass-row' }, row),
+  ]);
 }
 
 const WIN_LIMITS: Record<string, string> = {
