@@ -81,6 +81,13 @@ button, input, select { font: inherit; color: inherit; }
 
 .meta { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 8px; }
 .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+/* Shared round bar under the toolbar (both editor and replay). Uses the .tab
+   classes but as free-standing pills rather than panel tabs. */
+.round-bar { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.round-bar .tab { border-bottom: 1px solid var(--line); border-radius: 6px; }
+.round-bar .tab.kyoku.active, .round-bar .tab.active { border-color: var(--accent); }
+.round-bar .tab.add { gap: 4px; border: 1px dashed var(--line); color: var(--muted); }
+.round-bar .tab.add:hover { color: var(--fg); border-color: var(--fg); }
 .json-pane { display: flex; flex-direction: column; max-height: 420px; }
 
 /* board: stations on the four sides, a central pond of rivers + melds */
@@ -236,6 +243,11 @@ button, input, select { font: inherit; color: inherit; }
 .paste-json { width: 100%; box-sizing: border-box; min-height: 96px; resize: vertical; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); padding: 8px; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
 .paste-json:focus { border-color: var(--accent); outline: none; }
 .export-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* Import/Export scope selector (single round vs full game). */
+.export-scope { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.btn.seg { padding: 5px 12px; }
+.round-sel-wrap { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.round-sel { background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; color: var(--fg); }
 .dialog-warning { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.45;
   color: #ffd98a; background: rgba(224, 158, 40, .12); border: 1px solid rgba(224, 158, 40, .4); border-radius: 8px; padding: 9px 11px; }
 .dialog-warning .mi { width: 18px; height: 18px; flex: 0 0 auto; fill: #ffcf6b; margin-top: 1px; }

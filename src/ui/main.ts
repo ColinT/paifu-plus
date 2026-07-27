@@ -10,7 +10,7 @@ import type { Diagnostic } from '../stream/parse.js';
 import { gameToStream } from '../stream/serialize.js';
 import { spliceRoundHeader, readHaipai } from '../stream/header.js';
 import { tilesToNotation } from '../core/tiles.js';
-import { newGame, gameFromKyokus, emptyKyoku, roundName } from './state.js';
+import { newGame, gameFromKyokus, roundName } from './state.js';
 import type { EditorState } from './state.js';
 import { renderKyoku } from './editor.js';
 import { renderBoard } from './board.js';
@@ -29,9 +29,10 @@ let pendingQuickEdit = false;
 // ---- shell ----
 const app = document.getElementById('app')!;
 const toolbarEl = el('header', { class: 'toolbar' });
+const roundBarEl = el('nav', { class: 'round-bar' });
 const panelsEl = el('div', { class: 'panels' });
 const replayEl = el('div', { class: 'replay-root' });
-app.append(toolbarEl, panelsEl, replayEl);
+app.append(toolbarEl, roundBarEl, panelsEl, replayEl);
 
 let mode: 'editor' | 'replay' = 'editor';
 // Signature of the log the editor and replayer currently agree on. Guards the
@@ -45,10 +46,13 @@ function setMode(m: 'editor' | 'replay') {
   panelsEl.style.display = m === 'editor' ? 'flex' : 'none';
   replayEl.style.display = m === 'replay' ? 'block' : 'none';
   renderToolbar();
+  renderRoundBar();
 }
 
 const replay = mountReplay(replayEl, {
   getEditorLog: () => gameToTenhou(state.game),
+  // Keep the shared round bar's highlight in sync when the replayer changes round.
+  onRoundChange: () => { if (mode === 'replay') renderRoundBar(); },
   // A log loaded in the replayer (paste / shared link / load-from-editor) flows
   // back into the editor so switching to Editor shows the same game.
   onLog: (log) => {
@@ -173,9 +177,8 @@ function onQuickEdit() {
 // board / form / json bodies
 const boardBody = el('div', { class: 'board-wrap' });
 const metaEl = el('section', { class: 'meta' });
-const tabsEl = el('nav', { class: 'tabs' });
 const editorEl = el('main', { class: 'editor' });
-const formBody = el('div', { class: 'form-wrap' }, [metaEl, tabsEl, editorEl]);
+const formBody = el('div', { class: 'form-wrap' }, [metaEl, editorEl]);
 const jsonBody = el('div', { class: 'json-pane' });
 
 panelsEl.append(
@@ -214,45 +217,80 @@ function renderMeta() {
   metaEl.append(el('label', { class: 'field inline' }, [aka, 'Red fives (aka)']));
 }
 
-function deleteKyoku(i: number, label: string) {
+// ---- shared round bar (both editor and replay) ----
+/** The round the bar highlights: the editor's active kyoku, or the replayer's. */
+const activeRound = () => (mode === 'replay' ? replay.currentKyoku() : state.activeKyoku);
+
+function selectRound(i: number) {
+  if (mode === 'replay') { replay.showKyoku(i); renderRoundBar(); }
+  else { state.activeKyoku = i; renderAll(); }
+}
+
+/** New Round: append a blank round token to the stream and open it in the editor
+ *  (a blank round is for transcribing). No paste screen — use Import for logs. */
+function newRound() {
+  const ks = state.game.kyokus;
+  const next = ks.length ? Math.min(15, ks[ks.length - 1].round + 1) : 0;
+  const tok = `${['e', 's', 'w', 'n'][Math.floor(next / 4)]}${(next % 4) + 1}`;
+  state.streamText = `${state.streamText.trimEnd()} ${tok}`.trim();
+  streamInput.value = state.streamText;
+  parseStreamText();                 // adds the blank kyoku, sets activeKyoku to it
+  if (mode !== 'editor') setMode('editor'); else renderRoundBar();
+}
+
+function deleteRound(i: number, label: string) {
   if (state.game.kyokus.length <= 1) return;
-  if (!confirm(`Delete ${label}?`)) return;
+  if (!confirm(`Delete ${label}? This edits the game across all views.`)) return;
   state.game.kyokus.splice(i, 1);
   if (state.activeKyoku > i) state.activeKyoku -= 1;
   state.activeKyoku = Math.max(0, Math.min(state.activeKyoku, state.game.kyokus.length - 1));
+  // The stream text is now stale vs the model; re-derive it so both agree.
+  try { state.streamText = gameToStream(state.game); streamInput.value = state.streamText; } catch { /* keep old text */ }
+  if (mode === 'replay') syncReplayFromEditor();
   renderAll();
 }
 
-function renderTabs() {
-  clear(tabsEl);
-  const canDelete = state.game.kyokus.length > 1;
-  state.game.kyokus.forEach((k, i) => {
+function renderRoundBar() {
+  clear(roundBarEl);
+  const kyokus = state.game.kyokus;
+  const active = activeRound();
+  const canDelete = kyokus.length > 1;
+  kyokus.forEach((k, i) => {
     const label = `${roundName(k.round)}${k.honba ? `-${k.honba}` : ''}`;
-    tabsEl.append(el('div', { class: `tab kyoku${i === state.activeKyoku ? ' active' : ''}` }, [
-      el('button', { class: 'tab-label', onClick: () => { state.activeKyoku = i; renderAll(); } }, [label]),
-      ...(canDelete ? [el('button', { class: 'tab-del', title: `Delete ${label}`, onClick: (e: Event) => { e.stopPropagation(); deleteKyoku(i, label); } }, [icon('close')])] : []),
+    roundBarEl.append(el('div', { class: `tab kyoku${i === active ? ' active' : ''}` }, [
+      el('button', { class: 'tab-label', onClick: () => selectRound(i) }, [label]),
+      ...(canDelete ? [el('button', { class: 'tab-del', title: `Delete ${label}`, onClick: (e: Event) => { e.stopPropagation(); deleteRound(i, label); } }, [icon('close')])] : []),
     ]));
   });
-  tabsEl.append(el('button', { class: 'tab add', title: 'Add kyoku', onClick: () => { const last = state.game.kyokus[state.game.kyokus.length - 1]; state.game.kyokus.push(emptyKyoku(last ? Math.min(15, last.round + 1) : 0)); state.activeKyoku = state.game.kyokus.length - 1; renderAll(); } }, [icon('add')]));
+  roundBarEl.append(el('button', { class: 'tab add', title: 'Add a new blank round', onClick: newRound }, [icon('add'), 'New Round']));
 }
+
+// Export scope: the whole game, or just the active round.
+type Scope = 'round' | 'game';
+function gameForScope(scope: Scope): Game {
+  if (scope === 'game') return state.game;
+  const k = state.game.kyokus[state.activeKyoku];
+  return { ...state.game, kyokus: k ? [k] : [] };
+}
+const roundLabel = (k?: { round: number; honba: number }) => (k ? `${roundName(k.round)}${k.honba ? `-${k.honba}` : ''}` : 'round');
 
 // tenhou-JSON surfaces (panel, download, copy, viewer) strip arbitrary aka,
 // which tenhou can't represent. Native surfaces (share, PDF embed, replay
 // sync via getEditorLog) keep the faithful gameToTenhou(state.game).
-const buildLog = () => gameToTenhou(tenhouCompatible(state.game));
+const buildLog = (scope: Scope = 'game') => gameToTenhou(tenhouCompatible(gameForScope(scope)));
 function renderJson() {
   clear(jsonBody);
   const head = el('div', { class: 'json-head' }, [
     el('span', {}, [`${state.game.kyokus.length} kyoku`]),
-    el('button', { class: 'btn small has-icon', onClick: copyJson }, [icon('content_copy'), 'Copy']),
+    el('button', { class: 'btn small has-icon', onClick: () => copyJson('game') }, [icon('content_copy'), 'Copy']),
   ]);
-  jsonBody.append(head, el('pre', { class: 'json' }, [JSON.stringify(buildLog(), null, 1)]));
+  jsonBody.append(head, el('pre', { class: 'json' }, [JSON.stringify(buildLog('game'), null, 1)]));
 }
 function renderBoardPanel() { renderBoard(boardBody, state.game.kyokus[state.activeKyoku], state.game.meta.title[0]); }
-function renderForm() { renderMeta(); renderTabs(); const k = state.game.kyokus[state.activeKyoku]; if (k) renderKyoku(editorEl, k, { rerender: renderAll, refreshJson: renderJson }); else clear(editorEl); }
+function renderForm() { renderMeta(); const k = state.game.kyokus[state.activeKyoku]; if (k) renderKyoku(editorEl, k, { rerender: renderAll, refreshJson: renderJson }); else clear(editorEl); }
 
 /** Full refresh of the derived views (not the stream textarea). */
-function renderAll() { renderToolbar(); renderForm(); renderBoardPanel(); renderJson(); populateQuickFields(); renderTurnIndicator(); }
+function renderAll() { renderToolbar(); renderRoundBar(); renderForm(); renderBoardPanel(); renderJson(); populateQuickFields(); renderTurnIndicator(); }
 
 function renderDiagnostics(diags: Diagnostic[], missing: number) {
   clear(diagEl);
@@ -283,7 +321,7 @@ function parseStreamText() {
     pendingQuickEdit = false;
   }
   turnState = pending ?? null;
-  renderForm(); renderBoardPanel(); renderJson();
+  renderRoundBar(); renderForm(); renderBoardPanel(); renderJson();
   renderDiagnostics(diagnostics, missing);
   populateQuickFields();
   renderTurnIndicator();
@@ -305,7 +343,43 @@ function loadGame(game: Game) {
 const isPdfBytes = (buf: ArrayBuffer) => new TextDecoder().decode(new Uint8Array(buf, 0, 5)) === '%PDF-';
 const baseName = () => (state.game.meta.title[0] || 'paifu').replace(/\s+/g, '_');
 
+/** Merge one round of an imported game into the current game at `targetRound`,
+ *  replacing an existing round with that number or inserting it in round order. */
+function importRound(game: Game, targetRound: number) {
+  const k = game.kyokus[0];
+  if (!k) { alert('No round found in that log.'); return; }
+  k.round = targetRound;
+  const kyokus = [...state.game.kyokus];
+  const at = kyokus.findIndex((x) => x.round === targetRound);
+  if (at >= 0) kyokus[at] = k; else kyokus.push(k);
+  kyokus.sort((a, b) => a.round - b.round || a.honba - b.honba);
+  state.game = { ...state.game, kyokus };
+  state.activeKyoku = Math.max(0, kyokus.indexOf(k));
+  pendingQuickEdit = false; turnState = null;
+  try { state.streamText = gameToStream(state.game); } catch { /* keep old text */ }
+  streamInput.value = state.streamText;
+  clear(diagEl); renderAll();
+}
+
 function openImportDialog() {
+  // Scope: replace the whole game, or slot one round into the current game.
+  let scope: Scope = 'game';
+  const nextRound = state.game.kyokus.length ? Math.min(15, state.game.kyokus[state.game.kyokus.length - 1].round + 1) : 0;
+  const roundSel = el('select', { class: 'round-sel' }, Array.from({ length: 16 }, (_, r) => el('option', { value: String(r) }, [roundName(r)]))) as HTMLSelectElement;
+  roundSel.value = String(nextRound);
+  const segGame = el('button', { class: 'btn seg', onClick: () => setScope('game') }, ['Full game']);
+  const segRound = el('button', { class: 'btn seg', onClick: () => setScope('round') }, ['Single round']);
+  const roundWrap = el('label', { class: 'round-sel-wrap muted' }, ['into ', roundSel]);
+  const setScope = (s: Scope) => { scope = s; segGame.classList.toggle('primary', s === 'game'); segRound.classList.toggle('primary', s === 'round'); roundWrap.style.display = s === 'round' ? 'inline-flex' : 'none'; };
+  setScope('game');
+
+  const apply = (game: Game, what: string) => {
+    if (scope === 'round') importRound(game, Number(roundSel.value));
+    else loadGame(game);
+    flash(scope === 'round' ? `Imported ${what} → ${roundName(Number(roundSel.value))}` : `Imported ${what}`);
+    dlg.close();
+  };
+
   const fileInput = el('input', { type: 'file', accept: '.pdf,.json,application/json,application/pdf', class: 'hidden', onChange: (e: Event) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) void handleFile(f); } }) as HTMLInputElement;
   const drop = el('div', { class: 'dropzone', onClick: () => fileInput.click() }, [
     icon('upload_file'), el('div', { class: 'dz-main' }, ['Drag & drop a Paifun PDF or Tenhou JSON']), el('div', { class: 'muted' }, ['or click to browse']),
@@ -318,6 +392,7 @@ function openImportDialog() {
   const dlg = openDialog({
     title: 'Import',
     body: [
+      el('div', { class: 'export-scope' }, [el('span', { class: 'muted' }, ['Import as:']), segGame, segRound, roundWrap]),
       el('div', { class: 'import-formats' }, ['Supports ', el('b', {}, ['Paifun PDF']), ', ', el('b', {}, ['Tenhou JSON']), ', and PaifuPlus PDFs.']),
       drop, fileInput,
       el('div', { class: 'dialog-or' }, ['or paste JSON']),
@@ -331,11 +406,10 @@ function openImportDialog() {
       const buf = await f.arrayBuffer();
       if (/\.pdf$/i.test(f.name) || isPdfBytes(buf)) {
         const embedded = await readEmbeddedLog(buf);
-        if (embedded) { loadGame(tenhouToGame(embedded)); flash('Imported PaifuPlus PDF'); dlg.close(); return; }
+        if (embedded) { apply(tenhouToGame(embedded), 'PaifuPlus PDF'); return; }
         const { kyokus, errors } = await importPdf(buf);
         if (!kyokus.length) { alert('No hands found in that PDF.'); return; }
-        loadGame(gameFromKyokus(kyokus, f.name.replace(/\.pdf$/i, '')));
-        dlg.close();
+        apply(gameFromKyokus(kyokus, f.name.replace(/\.pdf$/i, '')), 'Paifun PDF');
         if (errors.length) alert(`Imported ${kyokus.length} kyoku. ${errors.length} page(s) failed:\n` + errors.map((x) => `  p${x.page}: ${x.message}`).join('\n'));
       } else {
         importJsonText(new TextDecoder().decode(buf));
@@ -348,9 +422,7 @@ function openImportDialog() {
     let log: any;
     try { log = JSON.parse(text); } catch { alert('Not valid JSON.'); return; }
     if (!log || !Array.isArray(log.log)) { alert('Not a tenhou/6 log (missing "log" array).'); return; }
-    loadGame(tenhouToGame(log));
-    flash('Imported Tenhou JSON');
-    dlg.close();
+    apply(tenhouToGame(log), 'Tenhou JSON');
   }
 }
 
@@ -358,43 +430,54 @@ function openExportDialog() {
   const warning = hasNonTenhouTiles(state.game)
     ? [el('div', { class: 'dialog-warning' }, [icon('warning'), el('span', {}, ['This record has aka dora on non-five tiles, which tenhou’s format can’t represent. They export as plain tiles in the Tenhou JSON and viewer — the PDF and PaifuPlus share links keep them.'])])]
     : [];
+  // Scope selector: export just the active round or the whole game.
+  let scope: Scope = state.game.kyokus.length > 1 ? 'game' : 'round';
+  const segRound = el('button', { class: 'btn seg', onClick: () => setScope('round') }, [`This round (${roundLabel(state.game.kyokus[state.activeKyoku])})`]);
+  const segGame = el('button', { class: 'btn seg', onClick: () => setScope('game') }, [`Full game (${state.game.kyokus.length} rounds)`]);
+  const setScope = (s: Scope) => { scope = s; segRound.classList.toggle('primary', s === 'round'); segGame.classList.toggle('primary', s === 'game'); };
+  setScope(scope);
   openDialog({
     title: 'Export',
     body: [
       ...warning,
+      el('div', { class: 'export-scope' }, [el('span', { class: 'muted' }, ['Export:']), segRound, segGame]),
       el('div', { class: 'export-row' }, [
-        el('button', { class: 'btn has-icon primary', onClick: () => exportPdf('en') }, [icon('download'), 'Paifu PDF (English)']),
-        el('button', { class: 'btn has-icon primary', onClick: () => exportPdf('ja') }, [icon('download'), 'Paifu PDF (日本語)']),
+        el('button', { class: 'btn has-icon primary', onClick: () => exportPdf('en', scope) }, [icon('download'), 'Paifu PDF (English)']),
+        el('button', { class: 'btn has-icon primary', onClick: () => exportPdf('ja', scope) }, [icon('download'), 'Paifu PDF (日本語)']),
       ]),
       el('div', { class: 'export-row' }, [el('span', { class: 'muted' }, ['PAIFUN-style paifu, rendered by PaifuPlus — re-importable'])]),
       el('div', { class: 'export-row' }, [
-        el('button', { class: 'btn has-icon', onClick: () => { downloadJson(); flash('Downloaded JSON'); } }, [icon('download'), 'Download Tenhou JSON']),
-        el('button', { class: 'btn has-icon', onClick: copyJson }, [icon('content_copy'), 'Copy JSON']),
+        el('button', { class: 'btn has-icon', onClick: () => { downloadJson(scope); flash('Downloaded JSON'); } }, [icon('download'), 'Download Tenhou JSON']),
+        el('button', { class: 'btn has-icon', onClick: () => copyJson(scope) }, [icon('content_copy'), 'Copy JSON']),
       ]),
       el('div', { class: 'export-row' }, [
-        el('button', { class: 'btn has-icon', onClick: openInTenhou }, [icon('open_in_new'), 'Open in Tenhou viewer']),
+        el('button', { class: 'btn has-icon', onClick: () => openInTenhou(scope) }, [icon('open_in_new'), 'Open in Tenhou viewer']),
       ]),
     ],
   });
 }
 
 /** Open the current log in tenhou's online viewer (data rides in the URL fragment). */
-function openInTenhou() {
-  const url = 'https://tenhou.net/5/#json=' + encodeURIComponent(jsonText());
+function openInTenhou(scope: Scope = 'game') {
+  const url = 'https://tenhou.net/5/#json=' + encodeURIComponent(jsonText(scope));
   window.open(url, '_blank', 'noopener');
 }
 
-async function exportPdf(lang: 'en' | 'ja') {
+async function exportPdf(lang: 'en' | 'ja', scope: Scope = 'game') {
   try {
-    const bytes = await gameToPaifuPdf(state.game, lang);
-    downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `${baseName()}_${lang}.pdf`);
+    const bytes = await gameToPaifuPdf(gameForScope(scope), lang);
+    const suffix = scope === 'round' ? `_${roundLabel(state.game.kyokus[state.activeKyoku])}` : '';
+    downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `${baseName()}${suffix}_${lang}.pdf`);
     flash('Downloaded PDF');
   } catch (err) { alert('PDF export failed: ' + (err as Error).message); }
 }
 
-const jsonText = () => JSON.stringify(buildLog());
-async function copyJson() { try { await navigator.clipboard.writeText(jsonText()); flash('Copied JSON'); } catch { alert('Copy failed — use Download.'); } }
-function downloadJson() { downloadBlob(new Blob([jsonText()], { type: 'application/json' }), baseName() + '.json'); }
+const jsonText = (scope: Scope = 'game') => JSON.stringify(buildLog(scope));
+async function copyJson(scope: Scope = 'game') { try { await navigator.clipboard.writeText(jsonText(scope)); flash('Copied JSON'); } catch { alert('Copy failed — use Download.'); } }
+function downloadJson(scope: Scope = 'game') {
+  const suffix = scope === 'round' ? `_${roundLabel(state.game.kyokus[state.activeKyoku])}` : '';
+  downloadBlob(new Blob([jsonText(scope)], { type: 'application/json' }), `${baseName()}${suffix}.json`);
+}
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = el('a', { href: url, download: filename });

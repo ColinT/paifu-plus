@@ -4,7 +4,6 @@ import { buildReplay } from '../replay/replay.js';
 import type { ReplayGame, KyokuReplay, Step } from '../replay/replay.js';
 import { renderBoardView, scoreEnglish } from './board.js';
 import type { BoardView, BoardResult } from './board.js';
-import { roundName } from './state.js';
 import { tileImg } from './tileEl.js';
 import { compareTiles } from '../core/tiles.js';
 import { el, clear } from './dom.js';
@@ -57,23 +56,17 @@ function stepLabel(g: ReplayGame, step: Step): (Node | string)[] {
   return [`${name}: ${step.label}`, ...tile];
 }
 
-export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; onLog?: (log: any) => void }) {
+export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; onLog?: (log: any) => void; onRoundChange?: (ky: number) => void }) {
   const state: ReplayState = { game: null, ky: 0, step: 0, playing: false, log: null, id: '', comments: [] };
   let timer: number | undefined;
 
-  const input = el('textarea', { class: 'stream-input', spellcheck: 'false', placeholder: 'Paste a tenhou/6 JSON log here, or use “Load from editor”.' }) as HTMLTextAreaElement;
-  const loadBar = el('div', { class: 'replay-load' }, [
-    el('button', { class: 'btn primary', onClick: () => loadText(input.value) }, ['Load log']),
-    el('button', { class: 'btn', onClick: () => { const log = opts.getEditorLog(); input.value = JSON.stringify(log); loadText(input.value); } }, ['Load from editor']),
-  ]);
-  const inputPanel = el('div', { class: 'stream-panel' }, [input, loadBar]);
-
-  const tabs = el('nav', { class: 'tabs' });
+  // Round navigation lives in the shared round bar (main.ts); loading logs goes
+  // through the toolbar Import. So the replay screen is just board + controls.
   const boardEl = el('div', { class: 'board-wrap' });
   const controls = el('div', { class: 'replay-controls' });
-  const view = el('div', { class: 'replay-view' }, [tabs, boardEl, controls]);
+  const view = el('div', { class: 'replay-view' }, [boardEl, controls]);
 
-  root.append(inputPanel, view);
+  root.append(view);
 
   // Close the Share dropdown when clicking outside it.
   document.addEventListener('click', (e) => {
@@ -93,11 +86,6 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
     if (extraComments?.length) saveComments(state.id, state.comments);
     state.ky = 0; state.step = 0; stop(); render();
     opts.onLog?.(log);
-  }
-  function loadText(text: string) {
-    let log: any;
-    try { log = JSON.parse(text); } catch { alert('Not valid JSON.'); return; }
-    loadLog(log);
   }
   function loadShared(payload: SharePayload) {
     loadLog(payload.log, payload.comments);
@@ -128,18 +116,12 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
   function curKyoku(): KyokuReplay | undefined { return state.game?.kyokus[state.ky]; }
 
   function render() {
-    inputPanel.style.display = state.game ? 'none' : 'flex';
-    view.style.display = state.game ? 'block' : 'none';
-    if (!state.game) return;
-
-    clear(tabs);
-    state.game.kyokus.forEach((k, i) => tabs.append(el('button', { class: `tab${i === state.ky ? ' active' : ''}`, onClick: () => { state.ky = i; state.step = 0; stop(); render(); } }, [`${roundName(k.round)}${k.honba ? `-${k.honba}` : ''}`])));
-    tabs.append(el('button', { class: 'tab has-icon', onClick: () => { state.game = null; render(); } }, [icon('refresh'), 'new log']));
-
+    if (!state.game) { clear(boardEl); clear(controls); return; }
     const k = curKyoku()!;
     state.step = Math.max(0, Math.min(state.step, k.steps.length - 1));
     renderBoardView(boardEl, stepToBoardView(state.game, k, k.steps[state.step]));
     renderControls(k);
+    opts.onRoundChange?.(state.ky);   // keep the shared round bar in sync
   }
 
   function renderControls(k: KyokuReplay) {
@@ -218,5 +200,13 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
   function stop() { state.playing = false; if (timer) { clearInterval(timer); timer = undefined; } }
 
   render();
-  return { load: loadText, loadShared, loadLog };
+  return {
+    loadShared, loadLog,
+    currentKyoku: () => state.ky,
+    showKyoku: (i: number) => {
+      if (!state.game) return;
+      state.ky = Math.max(0, Math.min(i, state.game.kyokus.length - 1));
+      state.step = 0; stop(); render();
+    },
+  };
 }
