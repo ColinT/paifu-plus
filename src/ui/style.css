@@ -124,12 +124,12 @@ button, input, select { font: inherit; color: inherit; }
 
 /* board: stations on the four sides, a central pond of rivers + melds */
 .board-wrap { display: flex; justify-content: center; }
-.board-area { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 900px; }
-.board { position: relative; display: grid; grid-template-columns: 52px 1fr 52px; grid-template-rows: 52px 1fr 52px; gap: 4px; width: 100%; aspect-ratio: 1 / 0.82; background: #14351f; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.board-area { display: flex; flex-direction: column; width: 100%; max-width: 900px; }
+.board { position: relative; display: grid; grid-template-columns: 52px 1fr 52px; grid-template-rows: 52px 1fr 52px; gap: 4px; width: 100%; aspect-ratio: 1 / 0.82; background: #14351f; border: 1px solid var(--line); border-radius: 0 0 10px 10px; padding: 10px; }
 
-/* Game-info panel: record name over a row of round / honba·sticks / dora, sitting
-   as a header above the board rather than a floating overlay. */
-.compass { align-self: flex-start; padding: 5px 9px; border-radius: 8px; background: #14351f; border: 1px solid var(--line); color: #eef; line-height: 1.15; }
+/* Game-info header: record name over a row of round / honba·sticks / dora. Full
+   board width, dark, and joined to the board below (no gap, shared border). */
+.compass { padding: 6px 10px; border-radius: 10px 10px 0 0; background: #12151b; border: 1px solid var(--line); border-bottom: none; color: #eef; line-height: 1.15; }
 .compass-title { font-size: 11px; font-weight: 700; color: #cde; white-space: nowrap; margin-bottom: 3px; }
 .compass-row { display: flex; align-items: center; gap: 12px; }
 .compass-round { font-size: 17px; font-weight: 800; white-space: nowrap; }
