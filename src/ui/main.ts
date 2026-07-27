@@ -250,7 +250,15 @@ function newRound() {
   const ks = state.game.kyokus;
   const next = ks.length ? Math.min(15, ks[ks.length - 1].round + 1) : 0;
   const tok = `${['e', 's', 'w', 'n'][Math.floor(next / 4)]}${(next % 4) + 1}`;
-  state.streamText = `${state.streamText.trimEnd()} ${tok}`.trim();
+  // The stream can lag the model — notably on a fresh load, where the default
+  // East 1 lives only in the model and the textarea is still empty. Re-derive
+  // the stream from the model first so existing rounds survive the append
+  // (otherwise the new token would become the *only* round).
+  const streamRounds = state.streamText.split(/[\s,]+/).filter(isRoundTok).length;
+  let base = state.streamText.trimEnd();
+  // Collapse the runs of spaces left by empty haipai placeholders (per line).
+  if (streamRounds < ks.length) { try { base = gameToStream(state.game).replace(/[^\S\n]+/g, ' ').trimEnd(); } catch { /* keep text */ } }
+  state.streamText = `${base} ${tok}`.trim();
   streamInput.value = state.streamText;
   parseStreamText();                 // adds the blank kyoku, sets activeKyoku to it
   if (mode !== 'editor') setMode('editor'); else renderRoundBar();
