@@ -16,10 +16,17 @@ import { renderKyoku } from './editor.js';
 import { renderBoard } from './board.js';
 import { mountReplay } from './replay.js';
 import { readShareFromUrl } from './share.js';
+import { listSaves, readSave, writeSave, deleteSave, makeSave } from './storage.js';
+import type { SaveMeta } from './storage.js';
 import { el, clear } from './dom.js';
 import { icon } from './icon.js';
 
 const state: EditorState & { streamText: string } = { game: newGame(), activeKyoku: 0, streamText: '' };
+
+// The save slot the current game is linked to (set on Save or Load). While set,
+// Save overwrites that slot; a full-game import/load clears it so the next Save
+// creates a fresh record instead of clobbering the loaded one.
+let currentSaveId: string | null = null;
 
 // A quick-edit (name/haipai/dora/ura) typed before its round token exists has
 // nothing to anchor to; it's held here and flushed once the round is entered.
@@ -62,6 +69,7 @@ const replay = mountReplay(replayEl, {
     try {
       state.game = tenhouToGame(log);
       state.activeKyoku = Math.max(0, state.game.kyokus.length - 1);
+      currentSaveId = null;                        // imported log isn't a save yet
       pendingQuickEdit = false; turnState = null; // fresh, complete log
       // Populate the stream transcription with an editable rendering of the log.
       // Assigning .value directly doesn't fire 'input', so state.game (the
@@ -200,6 +208,8 @@ function renderToolbar() {
       el('button', { class: `btn has-icon${mode === 'replay' ? ' primary' : ''}`, onClick: () => setMode('replay') }, [icon('play_circle'), 'Replay']),
     ]),
     el('span', { class: 'spacer' }),
+    el('button', { class: 'btn has-icon', onClick: quickSave, title: 'Save this game in your browser' }, [icon('save'), 'Save']),
+    el('button', { class: 'btn has-icon', onClick: openSavesDialog, title: 'Open a saved game' }, [icon('folder_open'), 'Open']),
     el('button', { class: 'btn has-icon', onClick: openImportDialog }, [icon('upload_file'), 'Import']),
     el('button', { class: 'btn has-icon primary', onClick: openExportDialog }, [icon('download'), 'Export']),
   );
@@ -333,11 +343,82 @@ function parseStreamText() {
 function loadGame(game: Game) {
   state.game = game;
   state.activeKyoku = 0;
+  currentSaveId = null;   // a freshly imported game isn't linked to a save yet
   pendingQuickEdit = false; turnState = null;
   try { state.streamText = gameToStream(game); } catch { state.streamText = ''; }
   streamInput.value = state.streamText;
   clear(diagEl);
   renderAll();
+}
+
+// ---- local save / load (localStorage) ----
+
+/** Save the working game to the browser. Overwrites the linked slot if any. */
+function quickSave() {
+  try {
+    const rec = makeSave(state.game, state.streamText, { id: currentSaveId ?? undefined });
+    writeSave(rec);
+    currentSaveId = rec.id;
+    flash(`Saved “${rec.title}”`);
+  } catch (err) { alert('Save failed: ' + (err as Error).message); }
+}
+
+/** Restore a saved record: the model is authoritative, the stream reproduces the
+ *  textarea verbatim (setting .value fires no 'input', so the model stays intact). */
+function loadSave(id: string) {
+  const rec = readSave(id);
+  if (!rec) { alert('That save could not be read.'); return; }
+  state.game = rec.game;
+  state.activeKyoku = 0;
+  currentSaveId = rec.id;
+  pendingQuickEdit = false; turnState = null;
+  state.streamText = rec.stream;
+  streamInput.value = rec.stream;
+  clear(diagEl);
+  if (mode === 'replay') syncReplayFromEditor();
+  renderAll();
+  flash(`Opened “${rec.title}”`);
+}
+
+const fmtWhen = (ms: number) => { try { return new Date(ms).toLocaleString(); } catch { return ''; } };
+
+function openSavesDialog() {
+  const listEl = el('div', { class: 'saves-list' });
+  const dlg = openDialog({
+    title: 'Open a saved game',
+    body: [
+      el('div', { class: 'muted saves-note' }, ['Saved in this browser. Use Export to download a copy you can keep or move.']),
+      listEl,
+    ],
+  });
+
+  function renderList() {
+    clear(listEl);
+    const saves = listSaves();
+    if (!saves.length) { listEl.append(el('div', { class: 'saves-empty muted' }, ['No saved games yet. Use ', el('b', {}, ['Save']), ' to store this one.'])); return; }
+    for (const s of saves) listEl.append(saveRow(s));
+  }
+
+  function saveRow(s: SaveMeta): HTMLElement {
+    const meta = `${s.rounds} round${s.rounds === 1 ? '' : 's'} · ${fmtWhen(s.savedAt)}${s.id === currentSaveId ? ' · current' : ''}`;
+    return el('div', { class: `saves-row${s.id === currentSaveId ? ' current' : ''}` }, [
+      el('div', { class: 'saves-info' }, [
+        el('div', { class: 'saves-title' }, [s.title || 'Untitled game']),
+        el('div', { class: 'saves-meta muted' }, [meta]),
+      ]),
+      el('div', { class: 'saves-actions' }, [
+        el('button', { class: 'btn small has-icon primary', onClick: () => { loadSave(s.id); dlg.close(); } }, [icon('folder_open'), 'Open']),
+        el('button', { class: 'btn small has-icon danger', title: 'Delete this save', onClick: () => {
+          if (!confirm(`Delete save “${s.title}”? This can’t be undone.`)) return;
+          deleteSave(s.id);
+          if (s.id === currentSaveId) currentSaveId = null;
+          renderList();
+        } }, [icon('delete'), 'Delete']),
+      ]),
+    ]);
+  }
+
+  renderList();
 }
 
 const isPdfBytes = (buf: ArrayBuffer) => new TextDecoder().decode(new Uint8Array(buf, 0, 5)) === '%PDF-';

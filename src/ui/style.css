@@ -252,6 +252,17 @@ button, input, select { font: inherit; color: inherit; }
   color: #ffd98a; background: rgba(224, 158, 40, .12); border: 1px solid rgba(224, 158, 40, .4); border-radius: 8px; padding: 9px 11px; }
 .dialog-warning .mi { width: 18px; height: 18px; flex: 0 0 auto; fill: #ffcf6b; margin-top: 1px; }
 
+/* Saved-games manager (Open dialog). */
+.saves-note { font-size: 12px; }
+.saves-list { display: flex; flex-direction: column; gap: 8px; }
+.saves-empty { font-size: 13px; padding: 8px 0; }
+.saves-row { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); }
+.saves-row.current { border-color: var(--accent); }
+.saves-info { flex: 1 1 auto; min-width: 0; }
+.saves-title { font-size: 13px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saves-meta { font-size: 11px; }
+.saves-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+
 .btn.link { display: inline-flex; align-items: center; }
 .btn.icon { display: inline-flex; align-items: center; justify-content: center; gap: 3px; padding: 6px 9px; }
 .btn.has-icon { display: inline-flex; align-items: center; gap: 5px; }
