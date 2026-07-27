@@ -355,7 +355,17 @@ function newRound() {
   const real = realGame().kyokus;                       // ignore any WIP placeholder slots
   const next = real.length ? Math.min(15, real[real.length - 1].round + 1) : 0;
   const tok = `${['e', 's', 'w', 'n'][Math.floor(next / 4)]}${(next % 4) + 1}`;
-  state.roundTexts.push(tok);
+  // Carry the players' names from the previous round, in the new round's seat
+  // order (E,S,W,N → fixed (next+s)%4), so the transcriber doesn't re-key them.
+  const prev = real[real.length - 1];
+  const names = [0, 1, 2, 3].map((s) => {
+    const n = prev?.players[(next + s) % 4]?.name ?? '';
+    return isDefaultName(n) ? '' : n;
+  });
+  const slot = names.some(Boolean)
+    ? spliceRoundHeader(tok, 0, { dora: '', ura: '', haipai: ['', '', '', ''], names, scores: ['', '', '', ''] })
+    : tok;
+  state.roundTexts.push(slot);
   rebuildFromSlots();
   state.activeKyoku = state.roundTexts.length - 1;       // focus the new round
   refreshActiveRoundView();                              // textarea shows just the new round
