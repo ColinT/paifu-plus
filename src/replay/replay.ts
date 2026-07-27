@@ -32,6 +32,7 @@ export interface KyokuReplay {
 
 export interface ReplayGame {
   names: string[];
+  title?: string;
   rule: { disp?: string; aka?: number };
   kyokus: KyokuReplay[];
 }
@@ -169,5 +170,5 @@ function simulateKyoku(entry: any[]): KyokuReplay {
 
 export function buildReplay(log: any): ReplayGame {
   const kyokus = (log.log ?? []).map(simulateKyoku);
-  return { names: log.name ?? ['P1', 'P2', 'P3', 'P4'], rule: log.rule ?? {}, kyokus };
+  return { names: log.name ?? ['P1', 'P2', 'P3', 'P4'], title: Array.isArray(log.title) ? log.title[0] : log.title, rule: log.rule ?? {}, kyokus };
 }

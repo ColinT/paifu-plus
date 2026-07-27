@@ -6,7 +6,6 @@ import type { Kyoku, PlayerHand } from '../core/model.js';
 import type { TenhouTile } from '../core/tiles.js';
 import { indicatorToDora, compareTiles } from '../core/tiles.js';
 import { tileImg, tileBack } from './tileEl.js';
-import { roundName } from './state.js';
 import { el } from './dom.js';
 
 const POS = ['bottom', 'right', 'top', 'left'] as const;
@@ -32,6 +31,30 @@ export interface BoardView {
   seats: [BoardSeat, BoardSeat, BoardSeat, BoardSeat]; // by player index 0..3
   result?: BoardResult;
   highlight?: { seat: number; tile?: TenhouTile };
+  title?: string; // game-record / tournament name, shown in the compass
+}
+
+const WINDS_JA = ['東', '南', '西', '北'];
+/** Round label in Japanese, e.g. round 4 → "南1局" (South 1). */
+const roundJa = (round: number) => `${WINDS_JA[Math.floor(round / 4)]}${(round % 4) + 1}局`;
+
+/** Top-left compass: record name, round, honba / riichi-stick counts, and the
+ *  actual dora (and ura, set apart) — not the indicators. */
+function compassEl(view: BoardView): HTMLElement {
+  const deposit = view.sticks + view.seats.filter((s) => s.riichi).length; // carried + this round's bets
+  const row: (Node | string)[] = [
+    el('div', { class: 'compass-round' }, [roundJa(view.round)]),
+    el('div', { class: 'compass-mid' }, [
+      el('div', { class: 'compass-count', title: `${view.honba} honba` }, [el('span', { class: 'pt-stick honba' }), String(view.honba)]),
+      el('div', { class: 'compass-count', title: `${deposit} riichi stick(s) in deposit` }, [el('span', { class: 'pt-stick riichi' }), String(deposit)]),
+    ]),
+  ];
+  if (view.dora.length) row.push(el('div', { class: 'compass-dora' }, view.dora.map((t) => miniTile(indicatorToDora(t)))));
+  if (view.ura.length) row.push(el('div', { class: 'compass-ura' }, view.ura.map((t) => miniTile(indicatorToDora(t)))));
+  return el('div', { class: 'compass' }, [
+    ...(view.title ? [el('div', { class: 'compass-title' }, [view.title])] : []),
+    el('div', { class: 'compass-row' }, row),
+  ]);
 }
 
 const WIN_LIMITS: Record<string, string> = {
@@ -69,7 +92,7 @@ function reconstructHand(p: PlayerHand): TenhouTile[] {
   return hand.sort(compareTiles);
 }
 
-export function kyokuToBoardView(k: Kyoku): BoardView {
+export function kyokuToBoardView(k: Kyoku, title?: string): BoardView {
   const seats = k.players.map((p, i): BoardSeat => {
     const hand = reconstructHand(p);
     let drawn: TenhouTile | undefined;
@@ -84,7 +107,7 @@ export function kyokuToBoardView(k: Kyoku): BoardView {
       melds: p.calls.map((c) => ({ type: c.type, tiles: c.tiles, called: c.calledTile, from: c.fromSeat })),
     };
   }) as BoardView['seats'];
-  return { round: k.round, honba: k.honba, sticks: k.riichiSticks, dora: k.doraIndicators, ura: k.uraIndicators, seats, result: boardResult(k) };
+  return { round: k.round, honba: k.honba, sticks: k.riichiSticks, dora: k.doraIndicators, ura: k.uraIndicators, seats, result: boardResult(k), title };
 }
 
 function boardResult(k: Kyoku): BoardResult | undefined {
@@ -167,24 +190,21 @@ function scoreBlock(view: BoardView, seat: number): HTMLElement {
 export function renderBoardView(container: HTMLElement, view: BoardView | undefined): void {
   container.replaceChildren();
   if (!view) { container.append(el('div', { class: 'board-empty' }, ['No hand to display'])); return; }
+  // Round / honba / sticks / dora now live in the top-left compass; the centre
+  // keeps only the win / draw result.
   const mid = el('div', { class: 'sc-mid' }, [
-    el('div', { class: 'bc-round' }, [`${roundName(view.round)}${view.honba ? ` · ${view.honba}b` : ''}`]),
-    // Dora line, omitted when the ruleset has no dora (e.g. Chinese-style).
-    // Stored values are indicators; show the actual dora tile they reveal.
-    ...(view.dora.length ? [el('div', { class: 'bc-dora' }, ['dora ', ...view.dora.map((t) => miniTile(indicatorToDora(t))), ...(view.ura.length ? [el('span', { class: 'ura-lab' }, ['ura']), ...view.ura.map((t) => miniTile(indicatorToDora(t)))] : [])])] : []),
-    ...(view.sticks ? [el('div', { class: 'bc-sticks' }, [`供託 ${view.sticks}`])] : []),
     ...(view.result ? [resultEl(view.result, view.seats)] : []),
   ]);
   const rerender = () => renderBoardView(container, view);
   const center = el('div', { class: 'pond-center' }, [scoreBlock(view, 2), scoreBlock(view, 3), mid, scoreBlock(view, 1), scoreBlock(view, 0)]);
   const pond = el('div', { class: 'pond' }, [center]);
   for (let s = 0; s < 4; s++) pond.append(riverEl(view.seats[s].river, s), meldsEl(view.seats[s].melds, s));
-  container.append(el('div', { class: 'board' }, [station(view, 2, rerender), station(view, 3, rerender), pond, station(view, 1, rerender), station(view, 0, rerender)]));
+  container.append(el('div', { class: 'board' }, [compassEl(view), station(view, 2, rerender), station(view, 3, rerender), pond, station(view, 1, rerender), station(view, 0, rerender)]));
 }
 
 /** Convenience wrapper for the editor's live board. */
-export function renderBoard(container: HTMLElement, k: Kyoku | undefined): void {
-  renderBoardView(container, k ? kyokuToBoardView(k) : undefined);
+export function renderBoard(container: HTMLElement, k: Kyoku | undefined, title?: string): void {
+  renderBoardView(container, k ? kyokuToBoardView(k, title) : undefined);
 }
 
 /** Render the centre result: winner name(s) + the winning tile image, with the

@@ -245,7 +245,7 @@ function renderJson() {
   ]);
   jsonBody.append(head, el('pre', { class: 'json' }, [JSON.stringify(buildLog(), null, 1)]));
 }
-function renderBoardPanel() { renderBoard(boardBody, state.game.kyokus[state.activeKyoku]); }
+function renderBoardPanel() { renderBoard(boardBody, state.game.kyokus[state.activeKyoku], state.game.meta.title[0]); }
 function renderForm() { renderMeta(); renderTabs(); const k = state.game.kyokus[state.activeKyoku]; if (k) renderKyoku(editorEl, k, { rerender: renderAll, refreshJson: renderJson }); else clear(editorEl); }
 
 /** Full refresh of the derived views (not the stream textarea). */

@@ -81,7 +81,20 @@ button, input, select { font: inherit; color: inherit; }
 
 /* board: stations on the four sides, a central pond of rivers + melds */
 .board-wrap { display: flex; justify-content: center; }
-.board { display: grid; grid-template-columns: 52px 1fr 52px; grid-template-rows: 52px 1fr 52px; gap: 4px; width: 100%; max-width: 900px; aspect-ratio: 1 / 0.82; background: #14351f; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.board { position: relative; display: grid; grid-template-columns: 52px 1fr 52px; grid-template-rows: 52px 1fr 52px; gap: 4px; width: 100%; max-width: 900px; aspect-ratio: 1 / 0.82; background: #14351f; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+
+/* Top-left compass: record name over a row of round / honba·sticks / dora. */
+.compass { position: absolute; top: 8px; left: 8px; z-index: 3; padding: 5px 9px; border-radius: 8px; background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.12); color: #eef; line-height: 1.15; }
+.compass-title { font-size: 11px; font-weight: 700; color: #cde; white-space: nowrap; margin-bottom: 3px; }
+.compass-row { display: flex; align-items: center; gap: 12px; }
+.compass-round { font-size: 17px; font-weight: 800; white-space: nowrap; }
+.compass-mid { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.compass-count { display: flex; align-items: center; gap: 5px; }
+.compass-dora, .compass-ura { --h: 26px; display: flex; align-items: center; gap: 1px; }
+.compass-ura { margin-left: 8px; }
+.pt-stick { display: inline-block; width: 22px; height: 5px; border-radius: 3px; background: #f4f0eb; border: 1px solid rgba(0,0,0,.4); position: relative; }
+.pt-stick.riichi::after { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; border-radius: 50%; background: #ce1914; transform: translate(-50%,-50%); }
+.pt-stick.honba { background: radial-gradient(circle, #333 0 1px, transparent 1.3px) 1px 50% / 5px 100% repeat-x, #f4f0eb; }
 .station { padding: 2px; display: flex; flex-direction: column; overflow: visible; align-self: center; justify-self: center; }
 .station-top { grid-area: 1 / 2; } .station-bottom { grid-area: 3 / 2; }
 .station-left { grid-area: 2 / 1; } .station-right { grid-area: 2 / 3; }
@@ -110,9 +123,6 @@ button, input, select { font: inherit; color: inherit; }
 .stick { width: 44px; height: 6px; background: #f4f4f4; border-radius: 3px; box-shadow: 0 0 2px rgba(0,0,0,.5); position: relative; margin-top: 1px; }
 .stick::after { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; border-radius: 50%; background: #e33; transform: translate(-50%, -50%); }
 .sc-mid { grid-area: 2 / 2; display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.bc-round { font-weight: 700; } .bc-sticks, .bc-dora { font-size: 11px; color: #cfe; display: flex; align-items: center; gap: 2px; }
-.bc-dora { --h: 44px; }
-.ura-lab { margin-left: 4px; }
 .bc-result { font-size: 11px; padding: 3px 8px; border-radius: 4px; background: rgba(0,0,0,.3); max-width: 160px; }
 .bc-result.tsumo, .bc-result.ron { color: #ffd66b; }
 .bc-result-line { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 3px; --h: 22px; }

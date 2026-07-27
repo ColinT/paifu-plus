@@ -46,7 +46,7 @@ function stepToBoardView(g: ReplayGame, k: KyokuReplay, step: Step): BoardView {
       melds: p.melds.map((m) => ({ type: m.type, tiles: m.tiles, called: m.called, from: m.from })),
     };
   }) as BoardView['seats'];
-  return { round: k.round, honba: k.honba, sticks: k.sticks, dora: k.dora, ura: atEnd ? k.ura : [], seats, result: atEnd ? resultFromLog(k.result, step) : undefined, highlight: { seat: step.active, tile: step.tile } };
+  return { round: k.round, honba: k.honba, sticks: k.sticks, dora: k.dora, ura: atEnd ? k.ura : [], seats, result: atEnd ? resultFromLog(k.result, step) : undefined, highlight: { seat: step.active, tile: step.tile }, title: g.title };
 }
 
 function stepLabel(g: ReplayGame, step: Step): (Node | string)[] {
