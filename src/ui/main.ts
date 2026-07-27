@@ -8,7 +8,9 @@ import { openDialog } from './dialog.js';
 import { parseStream } from '../stream/parse.js';
 import type { Diagnostic } from '../stream/parse.js';
 import { gameToStream } from '../stream/serialize.js';
-import { spliceRoundHeader, readHaipai } from '../stream/header.js';
+import { spliceRoundHeader, readHaipai, roundRegions } from '../stream/header.js';
+import { applyCarryOver } from '../stream/carryover.js';
+import type { CarryConflict } from '../stream/carryover.js';
 import { tilesToNotation } from '../core/tiles.js';
 import { newGame, gameFromKyokus, roundName } from './state.js';
 import type { EditorState } from './state.js';
@@ -27,6 +29,12 @@ const state: EditorState & { streamText: string } = { game: newGame(), activeKyo
 // Save overwrites that slot; a full-game import/load clears it so the next Save
 // creates a fresh record instead of clobbering the loaded one.
 let currentSaveId: string | null = null;
+
+// The stream textarea shows only the active round; the full multi-round DSL
+// lives in state.streamText (still the canonical form for parse/save/export).
+// Cross-round carry-over conflicts from the last parse, surfaced as warnings on
+// the round they belong to.
+let carryConflicts: CarryConflict[] = [];
 
 // A quick-edit (name/haipai/dora/ura) typed before its round token exists has
 // nothing to anchor to; it's held here and flushed once the round is entered.
@@ -70,13 +78,12 @@ const replay = mountReplay(replayEl, {
       state.game = tenhouToGame(log);
       state.activeKyoku = Math.max(0, state.game.kyokus.length - 1);
       currentSaveId = null;                        // imported log isn't a save yet
-      pendingQuickEdit = false; turnState = null; // fresh, complete log
+      pendingQuickEdit = false; turnState = null; carryConflicts = []; // fresh, complete log
       // Populate the stream transcription with an editable rendering of the log.
       // Assigning .value directly doesn't fire 'input', so state.game (the
       // faithful decode) stays authoritative until the user actually edits.
       state.streamText = gameToStream(state.game);
-      streamInput.value = state.streamText;
-      clear(diagEl);
+      refreshActiveRoundView();  // textarea shows just the active round
       if (mode === 'editor') renderAll();
     } catch (err) { console.warn('Could not import replay log into editor:', err); }
   },
@@ -173,6 +180,45 @@ function adoptParsed(game: Game) {
   state.game = game;
 }
 
+// ---- single-round textarea view ----
+// The textarea edits one round at a time. state.streamText stays the whole
+// game; these map between it and the visible round.
+
+/** The active round's slice of the full stream (empty if it has no round yet). */
+function activeRoundText(): string {
+  const regions = roundRegions(state.streamText);
+  if (!regions.length) return state.streamText.trim();
+  const r = regions[state.activeKyoku];
+  return r ? state.streamText.slice(r.start, r.end).trim() : '';
+}
+
+/** Fold the textarea (one round) back into the full multi-round stream. */
+function spliceActiveRoundFromTextarea() {
+  const regions = roundRegions(state.streamText);
+  const texts = regions.map((r) => state.streamText.slice(r.start, r.end).trim());
+  while (texts.length <= state.activeKyoku) texts.push('');
+  texts[state.activeKyoku] = streamInput.value;
+  state.streamText = texts.join('\n').trim();
+}
+
+/** Carry-over conflicts for the active round, as textarea-anchored warnings. */
+function conflictDiags(): Diagnostic[] {
+  const end = Math.max(0, streamInput.value.search(/\s|$/));
+  return carryConflicts
+    .filter((c) => c.kyoku === state.activeKyoku)
+    .map((c) => ({ severity: 'warn' as const, message: c.message, start: 0, end }));
+}
+
+/** Point the textarea at the active round and refresh its diagnostics/turn (used
+ *  when the active round changes without the user typing). */
+function refreshActiveRoundView() {
+  streamInput.value = activeRoundText();
+  const r = parseStream(streamInput.value);
+  turnState = r.pending ?? null;
+  renderDiagnostics([...r.diagnostics, ...conflictDiags()], r.missing);
+  renderTurnIndicator();
+}
+
 /** A quick-field edit: splice the new dora / ura / names / haipai into the stream. */
 function onQuickEdit() {
   const edit = quickFieldValues();
@@ -182,12 +228,14 @@ function onQuickEdit() {
   }
   pendingQuickEdit = false;
   const text = spliceRoundHeader(state.streamText, state.activeKyoku, edit);
-  state.streamText = text; streamInput.value = text;
+  state.streamText = text;
   const idx = state.activeKyoku;
-  const { game, diagnostics, missing, pending } = parseStream(text);
-  if (game.kyokus.length) { adoptParsed(game); state.activeKyoku = Math.min(idx, game.kyokus.length - 1); }
-  turnState = pending ?? null;
-  renderForm(); renderBoardPanel(); renderJson(); renderDiagnostics(diagnostics, missing); renderTurnIndicator();
+  const { game } = parseStream(text);
+  if (game.kyokus.length) { carryConflicts = applyCarryOver(game); adoptParsed(game); state.activeKyoku = Math.min(idx, game.kyokus.length - 1); }
+  streamInput.value = activeRoundText();  // the splice may have rewritten the round
+  const active = parseStream(streamInput.value);
+  turnState = active.pending ?? null;
+  renderForm(); renderBoardPanel(); renderJson(); renderDiagnostics([...active.diagnostics, ...conflictDiags()], active.missing); renderTurnIndicator();
 }
 [doraField, uraField, ...nameFields, ...scoreFields, ...haipaiFields].forEach((f) => f.addEventListener('input', onQuickEdit));
 
@@ -214,7 +262,7 @@ panelsEl.append(
   panel('tenhou/6 JSON', 'json', jsonBody, { collapsed: true }),
 );
 
-streamInput.addEventListener('input', () => { state.streamText = streamInput.value; parseStreamText(); });
+streamInput.addEventListener('input', () => { spliceActiveRoundFromTextarea(); parseStreamText(); });
 
 // ---- rendering ----
 function renderToolbar() {
@@ -250,7 +298,7 @@ const activeRound = () => (mode === 'replay' ? replay.currentKyoku() : state.act
 
 function selectRound(i: number) {
   if (mode === 'replay') { replay.showKyoku(i); renderRoundBar(); }
-  else { state.activeKyoku = i; renderAll(); }
+  else { state.activeKyoku = i; refreshActiveRoundView(); renderAll(); }
 }
 
 /** New Round: append a blank round token to the stream and open it in the editor
@@ -268,9 +316,11 @@ function newRound() {
   // Collapse the runs of spaces left by empty haipai placeholders (per line).
   if (streamRounds < ks.length) { try { base = gameToStream(state.game).replace(/[^\S\n]+/g, ' ').trimEnd(); } catch { /* keep text */ } }
   state.streamText = `${base} ${tok}`.trim();
-  streamInput.value = state.streamText;
-  parseStreamText();                 // adds the blank kyoku, sets activeKyoku to it
-  if (mode !== 'editor') setMode('editor'); else renderRoundBar();
+  const r = parseStream(state.streamText);
+  if (r.game.kyokus.length) { carryConflicts = applyCarryOver(r.game); adoptParsed(r.game); }
+  state.activeKyoku = Math.max(0, state.game.kyokus.length - 1); // focus the new round
+  refreshActiveRoundView();          // textarea shows just the new (blank) round
+  if (mode !== 'editor') setMode('editor'); else renderAll();
 }
 
 function deleteRound(i: number, label: string) {
@@ -280,7 +330,8 @@ function deleteRound(i: number, label: string) {
   if (state.activeKyoku > i) state.activeKyoku -= 1;
   state.activeKyoku = Math.max(0, Math.min(state.activeKyoku, state.game.kyokus.length - 1));
   // The stream text is now stale vs the model; re-derive it so both agree.
-  try { state.streamText = gameToStream(state.game); streamInput.value = state.streamText; } catch { /* keep old text */ }
+  try { state.streamText = gameToStream(state.game); } catch { /* keep old text */ }
+  refreshActiveRoundView();
   if (mode === 'replay') syncReplayFromEditor();
   renderAll();
 }
@@ -335,29 +386,38 @@ function renderDiagnostics(diags: Diagnostic[], missing: number) {
   diagEl.append(el('div', { class: 'diag-summary' }, [`${errs} error${errs === 1 ? '' : 's'}, ${warns} warning${warns === 1 ? '' : 's'}${missing ? `, ${missing} missed (?)` : ''}`]));
   const list = el('div', { class: 'diag-list' });
   for (const d of diags.slice(0, 40)) {
-    const snippet = state.streamText.slice(d.start, d.end);
+    // Offsets are relative to the single-round textarea, not the full stream.
+    const snippet = streamInput.value.slice(d.start, d.end);
     list.append(el('div', { class: `diag ${d.severity}`, onClick: () => { streamInput.focus(); streamInput.setSelectionRange(d.start, d.end); } }, [el('code', {}, [snippet || '·']), ' ', d.message]));
   }
   diagEl.append(list);
 }
 
 function parseStreamText() {
-  let { game, diagnostics, missing, pending } = parseStream(state.streamText);
-  if (game.kyokus.length) { adoptParsed(game); state.activeKyoku = game.kyokus.length - 1; }
+  // The model comes from the whole game (all rounds) so carry-over can run.
+  const full = parseStream(state.streamText);
+  if (full.game.kyokus.length) {
+    carryConflicts = applyCarryOver(full.game);
+    adoptParsed(full.game);
+    state.activeKyoku = Math.min(state.activeKyoku, full.game.kyokus.length - 1);
+  } else { carryConflicts = []; }
   // Flush a quick-edit that couldn't anchor earlier, now that a round exists.
   if (pendingQuickEdit && hasRoundFor(state.streamText, state.activeKyoku)) {
     const text = spliceRoundHeader(state.streamText, state.activeKyoku, quickFieldValues());
     if (text !== state.streamText) {
-      state.streamText = text; streamInput.value = text;
+      state.streamText = text;
       const r = parseStream(text);
-      if (r.game.kyokus.length) { adoptParsed(r.game); state.activeKyoku = r.game.kyokus.length - 1; }
-      diagnostics = r.diagnostics; missing = r.missing; pending = r.pending;
+      if (r.game.kyokus.length) { carryConflicts = applyCarryOver(r.game); adoptParsed(r.game); }
+      streamInput.value = activeRoundText(); // the header splice changed the active round
     }
     pendingQuickEdit = false;
   }
-  turnState = pending ?? null;
+  // Diagnostics + turn indicator reflect only the visible (active) round, so
+  // their offsets line up with the single-round textarea.
+  const active = parseStream(streamInput.value);
+  turnState = active.pending ?? null;
   renderRoundBar(); renderForm(); renderBoardPanel(); renderJson();
-  renderDiagnostics(diagnostics, missing);
+  renderDiagnostics([...active.diagnostics, ...conflictDiags()], active.missing);
   populateQuickFields();
   renderTurnIndicator();
 }
@@ -369,10 +429,9 @@ function loadGame(game: Game) {
   state.game = game;
   state.activeKyoku = 0;
   currentSaveId = null;   // a freshly imported game isn't linked to a save yet
-  pendingQuickEdit = false; turnState = null;
+  pendingQuickEdit = false; turnState = null; carryConflicts = [];
   try { state.streamText = gameToStream(game); } catch { state.streamText = ''; }
-  streamInput.value = state.streamText;
-  clear(diagEl);
+  refreshActiveRoundView();
   renderAll();
 }
 
@@ -404,10 +463,9 @@ function loadSave(id: string) {
   state.game = rec.game;
   state.activeKyoku = 0;
   currentSaveId = rec.id;
-  pendingQuickEdit = false; turnState = null;
+  pendingQuickEdit = false; turnState = null; carryConflicts = [];
   state.streamText = rec.stream;
-  streamInput.value = rec.stream;
-  clear(diagEl);
+  refreshActiveRoundView();
   if (mode === 'replay') syncReplayFromEditor();
   renderAll();
   flash(`Opened “${rec.title}”`);
@@ -492,10 +550,10 @@ function importRound(game: Game, targetRound: number) {
   kyokus.sort((a, b) => a.round - b.round || a.honba - b.honba);
   state.game = { ...state.game, kyokus };
   state.activeKyoku = Math.max(0, kyokus.indexOf(k));
-  pendingQuickEdit = false; turnState = null;
+  pendingQuickEdit = false; turnState = null; carryConflicts = [];
   try { state.streamText = gameToStream(state.game); } catch { /* keep old text */ }
-  streamInput.value = state.streamText;
-  clear(diagEl); renderAll();
+  refreshActiveRoundView();
+  renderAll();
 }
 
 function openImportDialog() {

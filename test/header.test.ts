@@ -1,6 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { spliceRoundHeader } from '../src/stream/header.js';
+import { spliceRoundHeader, roundRegions } from '../src/stream/header.js';
 import { parseStream } from '../src/stream/parse.js';
+
+describe('roundRegions', () => {
+  it('slices a multi-round stream into per-round regions', () => {
+    const text = 'e1 d5m 1z 9p ryuukyoku\ne2 3s 4s tsumo';
+    const regions = roundRegions(text);
+    expect(regions.length).toBe(2);
+    expect(text.slice(regions[0].start, regions[0].end).trim()).toBe('e1 d5m 1z 9p ryuukyoku');
+    expect(text.slice(regions[1].start, regions[1].end).trim()).toBe('e2 3s 4s tsumo');
+  });
+
+  it('returns nothing when there is no round token', () => {
+    expect(roundRegions('   ')).toEqual([]);
+  });
+});
 
 describe('spliceRoundHeader', () => {
   const blank = { dora: '', ura: '', haipai: ['', '', '', ''], names: ['', '', '', ''], scores: ['', '', '', ''] };

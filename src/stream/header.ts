@@ -27,6 +27,17 @@ function tokenize(text: string): Tok[] {
   return out;
 }
 
+/**
+ * Char regions [start, end) of each round in a multi-round stream — from a
+ * round token up to the next one (or end of text). Used to show/splice a single
+ * round in the editor while the full stream stays the canonical form.
+ */
+export function roundRegions(text: string): { start: number; end: number }[] {
+  const tk = tokenize(text);
+  const rounds = tk.filter((t) => RE_ROUND.test(t.text));
+  return rounds.map((r, i) => ({ start: r.start, end: rounds[i + 1] ? rounds[i + 1].start : text.length }));
+}
+
 export interface HeaderEdit {
   /** Dora-indicator notation (dead-wall tiles), emitted as a `di…` token. Empty ⇒ no dora token. */
   dora: string;
