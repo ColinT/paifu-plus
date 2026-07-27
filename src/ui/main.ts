@@ -189,7 +189,16 @@ const editorEl = el('main', { class: 'editor' });
 const formBody = el('div', { class: 'form-wrap' }, [metaEl, editorEl]);
 const jsonBody = el('div', { class: 'json-pane' });
 
+// Game title lives at the top of the editor (it's the name a save is stored under).
+const titleInput = el('input', {
+  class: 'game-title-in', spellcheck: 'false', placeholder: 'Untitled game', 'aria-label': 'Game title',
+  onInput: (e: Event) => { state.game.meta.title[0] = (e.target as HTMLInputElement).value; renderBoardPanel(); renderJson(); },
+}) as HTMLInputElement;
+const titleBar = el('div', { class: 'game-title-bar' }, [el('span', { class: 'game-title-lbl' }, ['Game']), titleInput]);
+const syncTitleInput = () => { titleInput.value = state.game.meta.title[0] ?? ''; };
+
 panelsEl.append(
+  titleBar,
   panel('Stream transcription', 'stream', streamBody, { grow: true }),
   panel('Board', 'board', boardBody),
   panel('Form editor', 'form', formBody, { collapsed: true }),
@@ -218,7 +227,6 @@ function renderToolbar() {
 function renderMeta() {
   clear(metaEl);
   const g = state.game.meta;
-  metaEl.append(el('label', { class: 'field grow' }, ['Title', el('input', { class: 'grow', value: g.title[0] ?? '', placeholder: 'Title', onInput: (e: Event) => { g.title[0] = (e.target as HTMLInputElement).value; renderJson(); } })]));
   const names = el('div', { class: 'names' });
   for (let i = 0; i < 4; i++) names.append(el('label', { class: 'field' }, [`P${i}`, el('input', { value: g.names[i], onInput: (e: Event) => { g.names[i] = (e.target as HTMLInputElement).value; renderJson(); } })]));
   metaEl.append(names);
@@ -300,7 +308,7 @@ function renderBoardPanel() { renderBoard(boardBody, state.game.kyokus[state.act
 function renderForm() { renderMeta(); const k = state.game.kyokus[state.activeKyoku]; if (k) renderKyoku(editorEl, k, { rerender: renderAll, refreshJson: renderJson }); else clear(editorEl); }
 
 /** Full refresh of the derived views (not the stream textarea). */
-function renderAll() { renderToolbar(); renderRoundBar(); renderForm(); renderBoardPanel(); renderJson(); populateQuickFields(); renderTurnIndicator(); }
+function renderAll() { renderToolbar(); renderRoundBar(); syncTitleInput(); renderForm(); renderBoardPanel(); renderJson(); populateQuickFields(); renderTurnIndicator(); }
 
 function renderDiagnostics(diags: Diagnostic[], missing: number) {
   clear(diagEl);
@@ -353,9 +361,17 @@ function loadGame(game: Game) {
 
 // ---- local save / load (localStorage) ----
 
-/** Save the working game to the browser. Overwrites the linked slot if any. */
+/** Save the working game to the browser. A first save asks for a name (which
+ *  becomes the game's title); re-saving overwrites the linked slot silently. */
 function quickSave() {
   try {
+    if (!currentSaveId) {
+      const suggested = (state.game.meta.title[0] || '').trim() || 'Untitled game';
+      const name = prompt('Name this save:', suggested);
+      if (name === null) return; // cancelled
+      state.game.meta.title[0] = name.trim();
+      syncTitleInput(); renderBoardPanel(); renderJson(); // the save name is the game title
+    }
     const rec = makeSave(state.game, state.streamText, { id: currentSaveId ?? undefined });
     writeSave(rec);
     currentSaveId = rec.id;
@@ -408,14 +424,37 @@ function openSavesDialog() {
       ]),
       el('div', { class: 'saves-actions' }, [
         el('button', { class: 'btn small has-icon primary', onClick: () => { loadSave(s.id); dlg.close(); } }, [icon('folder_open'), 'Open']),
-        el('button', { class: 'btn small has-icon danger', title: 'Delete this save', onClick: () => {
+        el('button', { class: 'btn small icon', title: 'Rename this save', onClick: () => renameSave(s) }, [icon('edit')]),
+        el('button', { class: 'btn small icon', title: 'Duplicate this save', onClick: () => duplicateSave(s) }, [icon('content_copy')]),
+        el('button', { class: 'btn small icon danger', title: 'Delete this save', onClick: () => {
           if (!confirm(`Delete save “${s.title}”? This can’t be undone.`)) return;
           deleteSave(s.id);
           if (s.id === currentSaveId) currentSaveId = null;
           renderList();
-        } }, [icon('delete'), 'Delete']),
+        } }, [icon('delete')]),
       ]),
     ]);
+  }
+
+  /** Rename a save; if it's the current game, keep the working title in sync. */
+  function renameSave(s: SaveMeta) {
+    const name = prompt('Rename save:', s.title);
+    if (name === null) return;
+    const rec = readSave(s.id);
+    if (!rec) { alert('That save could not be read.'); return; }
+    rec.title = name.trim() || 'Untitled game';
+    writeSave(rec);
+    if (s.id === currentSaveId) { state.game.meta.title[0] = rec.title; syncTitleInput(); renderBoardPanel(); renderJson(); }
+    renderList();
+  }
+
+  /** Write an independent copy of a save under a new name (new id). */
+  function duplicateSave(s: SaveMeta) {
+    const rec = readSave(s.id);
+    if (!rec) { alert('That save could not be read.'); return; }
+    writeSave(makeSave(rec.game, rec.stream, { title: `${rec.title} (copy)` }));
+    renderList();
+    flash(`Copied “${rec.title}”`);
   }
 
   renderList();
