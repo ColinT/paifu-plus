@@ -123,11 +123,22 @@ function populateQuickFields() {
   }
 }
 
-/** A quick-field edit: splice the new dora / names / haipai into the raw stream. */
+const quickFieldValues = () => ({ dora: doraField.value, ura: uraField.value, haipai: haipaiFields.map((f) => f.value), names: nameFields.map((f) => f.value) });
+const isRoundTok = (t: string) => /^[eswn][1-4]([._\-][0-9]+){0,2}$/i.test(t);
+const hasRoundFor = (text: string, idx: number) => text.split(/[\s,]+/).filter(isRoundTok).length > idx;
+// A quick-edit typed before the round token exists (nothing to anchor to) is
+// held here, then flushed by parseStreamText once the round is entered.
+let pendingQuickEdit = false;
+
+/** A quick-field edit: splice the new dora / ura / names / haipai into the stream. */
 function onQuickEdit() {
-  const text = spliceRoundHeader(state.streamText, state.activeKyoku, {
-    dora: doraField.value, ura: uraField.value, haipai: haipaiFields.map((f) => f.value), names: nameFields.map((f) => f.value),
-  });
+  const edit = quickFieldValues();
+  if (!hasRoundFor(state.streamText, state.activeKyoku)) {
+    pendingQuickEdit = !!(edit.dora || edit.ura || edit.haipai.some(Boolean) || edit.names.some(Boolean));
+    return; // no round yet — keep the field values and wait for it
+  }
+  pendingQuickEdit = false;
+  const text = spliceRoundHeader(state.streamText, state.activeKyoku, edit);
   state.streamText = text; streamInput.value = text;
   const idx = state.activeKyoku;
   const { game, diagnostics, missing } = parseStream(text);
@@ -235,8 +246,19 @@ function renderDiagnostics(diags: Diagnostic[], missing: number) {
 }
 
 function parseStreamText() {
-  const { game, diagnostics, missing } = parseStream(state.streamText);
+  let { game, diagnostics, missing } = parseStream(state.streamText);
   if (game.kyokus.length) { state.game = game; state.activeKyoku = game.kyokus.length - 1; }
+  // Flush a quick-edit that couldn't anchor earlier, now that a round exists.
+  if (pendingQuickEdit && hasRoundFor(state.streamText, state.activeKyoku)) {
+    const text = spliceRoundHeader(state.streamText, state.activeKyoku, quickFieldValues());
+    if (text !== state.streamText) {
+      state.streamText = text; streamInput.value = text;
+      const r = parseStream(text);
+      if (r.game.kyokus.length) { state.game = r.game; state.activeKyoku = r.game.kyokus.length - 1; }
+      diagnostics = r.diagnostics; missing = r.missing;
+    }
+    pendingQuickEdit = false;
+  }
   renderForm(); renderBoardPanel(); renderJson();
   renderDiagnostics(diagnostics, missing);
   populateQuickFields();
