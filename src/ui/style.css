@@ -60,6 +60,7 @@ button, input, select { font: inherit; color: inherit; }
 .stream-quick { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; padding: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; }
 .q-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); flex: 1; min-width: 96px; }
 .q-lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-lbl.turn { color: var(--accent); font-weight: 700; }
 .q-in { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 5px 7px; color: var(--fg); font: 13px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; }
 .q-in:focus { outline: none; border-color: var(--accent); }
 .q-name { font-family: inherit; }

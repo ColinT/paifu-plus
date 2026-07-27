@@ -8,7 +8,7 @@ import { openDialog } from './dialog.js';
 import { parseStream } from '../stream/parse.js';
 import type { Diagnostic } from '../stream/parse.js';
 import { gameToStream } from '../stream/serialize.js';
-import { spliceRoundHeader } from '../stream/header.js';
+import { spliceRoundHeader, readHaipai } from '../stream/header.js';
 import { tilesToNotation } from '../core/tiles.js';
 import { newGame, gameFromKyokus, emptyKyoku, roundName } from './state.js';
 import type { EditorState } from './state.js';
@@ -58,7 +58,7 @@ const replay = mountReplay(replayEl, {
     try {
       state.game = tenhouToGame(log);
       state.activeKyoku = Math.max(0, state.game.kyokus.length - 1);
-      pendingQuickEdit = false; // fresh log — quick fields reflect it
+      pendingQuickEdit = false; turnState = null; // fresh, complete log
       // Populate the stream transcription with an editable rendering of the log.
       // Assigning .value directly doesn't fire 'input', so state.game (the
       // faithful decode) stays authoritative until the user actually edits.
@@ -101,19 +101,32 @@ const doraField = el('input', { class: 'q-in', spellcheck: 'false', placeholder:
 const uraField = el('input', { class: 'q-in', spellcheck: 'false', placeholder: 'ura 3s', title: 'Ura-dora indicator(s), revealed under a riichi win' }) as HTMLInputElement;
 const nameFields: HTMLInputElement[] = [];
 const haipaiFields: HTMLInputElement[] = [];
+const seatLabels: HTMLElement[] = [];
 // First column holds the dora indicator (aligned with the name row) and the ura
 // indicator below it (aligned with the haipai row); each seat column is wind /
 // name / haipai, so the fields line up across.
 const quickRow = el('div', { class: 'stream-quick' }, [
-  el('div', { class: 'q-field' }, [el('span', { class: 'q-lbl' }, ['Dora / Ura']), doraField, uraField]),
+  el('div', { class: 'q-field' }, [el('span', { class: 'q-lbl' }, ['Dora / Ura Indicators']), doraField, uraField]),
 ]);
 for (let s = 0; s < 4; s++) {
+  const lbl = el('span', { class: 'q-lbl' }, [WINDS[s]]);
   const nameInp = el('input', { class: 'q-in q-name', spellcheck: 'false', placeholder: 'name' }) as HTMLInputElement;
   const inp = el('input', { class: 'q-in q-hp', spellcheck: 'false', placeholder: 'haipai' }) as HTMLInputElement;
-  nameFields.push(nameInp); haipaiFields.push(inp);
-  quickRow.append(el('div', { class: 'q-field' }, [el('span', { class: 'q-lbl' }, [WINDS[s]]), nameInp, inp]));
+  seatLabels.push(lbl); nameFields.push(nameInp); haipaiFields.push(inp);
+  quickRow.append(el('div', { class: 'q-field' }, [lbl, nameInp, inp]));
 }
 const streamBody = el('div', { class: 'stream-panel' }, [quickRow, streamInput, diagEl]);
+
+// Live turn indicator: mark the seat that has to act next in an open hand.
+let turnState: { seat: number; expect: 'draw' | 'discard' } | null = null;
+function renderTurnIndicator() {
+  seatLabels.forEach((lbl, s) => {
+    const on = turnState?.seat === s;
+    lbl.textContent = (on ? '▸ ' : '') + WINDS[s];
+    lbl.classList.toggle('turn', on);
+    lbl.title = on ? (turnState!.expect === 'draw' ? 'to draw' : 'to discard') : '';
+  });
+}
 
 /** Mirror the active kyoku's dora, names and haipai into the quick-edit fields. */
 function populateQuickFields() {
@@ -122,10 +135,12 @@ function populateQuickFields() {
   if (!k) { doraField.value = ''; uraField.value = ''; nameFields.forEach((f) => (f.value = '')); haipaiFields.forEach((f) => (f.value = '')); return; }
   doraField.value = tilesToNotation(k.doraIndicators);
   uraField.value = tilesToNotation(k.uraIndicators);
+  // Haipai fields mirror what was *recorded* (from the raw stream), not the tiles
+  // the parser backfilled from later play — so they don't fill themselves in.
+  const recorded = readHaipai(state.streamText, state.activeKyoku);
   for (let s = 0; s < 4; s++) {
     const p = k.players[(k.round + s) % 4];
-    const tiles = s === 0 && p.turns[0]?.draw !== undefined ? [...p.haipai, p.turns[0].draw] : p.haipai;
-    haipaiFields[s].value = tilesToNotation(tiles);
+    haipaiFields[s].value = recorded[s];
     nameFields[s].value = isDefaultName(p.name) ? '' : p.name;
   }
 }
@@ -145,9 +160,10 @@ function onQuickEdit() {
   const text = spliceRoundHeader(state.streamText, state.activeKyoku, edit);
   state.streamText = text; streamInput.value = text;
   const idx = state.activeKyoku;
-  const { game, diagnostics, missing } = parseStream(text);
+  const { game, diagnostics, missing, pending } = parseStream(text);
   if (game.kyokus.length) { state.game = game; state.activeKyoku = Math.min(idx, game.kyokus.length - 1); }
-  renderForm(); renderBoardPanel(); renderJson(); renderDiagnostics(diagnostics, missing);
+  turnState = pending ?? null;
+  renderForm(); renderBoardPanel(); renderJson(); renderDiagnostics(diagnostics, missing); renderTurnIndicator();
 }
 [doraField, uraField, ...nameFields, ...haipaiFields].forEach((f) => f.addEventListener('input', onQuickEdit));
 
@@ -233,7 +249,7 @@ function renderBoardPanel() { renderBoard(boardBody, state.game.kyokus[state.act
 function renderForm() { renderMeta(); renderTabs(); const k = state.game.kyokus[state.activeKyoku]; if (k) renderKyoku(editorEl, k, { rerender: renderAll, refreshJson: renderJson }); else clear(editorEl); }
 
 /** Full refresh of the derived views (not the stream textarea). */
-function renderAll() { renderToolbar(); renderForm(); renderBoardPanel(); renderJson(); populateQuickFields(); }
+function renderAll() { renderToolbar(); renderForm(); renderBoardPanel(); renderJson(); populateQuickFields(); renderTurnIndicator(); }
 
 function renderDiagnostics(diags: Diagnostic[], missing: number) {
   clear(diagEl);
@@ -250,7 +266,7 @@ function renderDiagnostics(diags: Diagnostic[], missing: number) {
 }
 
 function parseStreamText() {
-  let { game, diagnostics, missing } = parseStream(state.streamText);
+  let { game, diagnostics, missing, pending } = parseStream(state.streamText);
   if (game.kyokus.length) { state.game = game; state.activeKyoku = game.kyokus.length - 1; }
   // Flush a quick-edit that couldn't anchor earlier, now that a round exists.
   if (pendingQuickEdit && hasRoundFor(state.streamText, state.activeKyoku)) {
@@ -259,13 +275,15 @@ function parseStreamText() {
       state.streamText = text; streamInput.value = text;
       const r = parseStream(text);
       if (r.game.kyokus.length) { state.game = r.game; state.activeKyoku = r.game.kyokus.length - 1; }
-      diagnostics = r.diagnostics; missing = r.missing;
+      diagnostics = r.diagnostics; missing = r.missing; pending = r.pending;
     }
     pendingQuickEdit = false;
   }
+  turnState = pending ?? null;
   renderForm(); renderBoardPanel(); renderJson();
   renderDiagnostics(diagnostics, missing);
   populateQuickFields();
+  renderTurnIndicator();
 }
 
 // ---- import / export ----
@@ -274,7 +292,7 @@ function parseStreamText() {
 function loadGame(game: Game) {
   state.game = game;
   state.activeKyoku = 0;
-  pendingQuickEdit = false;
+  pendingQuickEdit = false; turnState = null;
   try { state.streamText = gameToStream(game); } catch { state.streamText = ''; }
   streamInput.value = state.streamText;
   clear(diagEl);

@@ -43,8 +43,8 @@ describe('stream transcription DSL', () => {
     const { game, diagnostics } = parseStream(s);
     const north = game.kyokus[0].players[3];
     expect(north.calls.some((c) => c.type === 'pon' && c.calledTile === 12)).toBe(true);
-    expect(north.haipai.filter((t) => t === 12).length).toBe(2); // backfilled two 2m
-    expect(diagnostics.some((d) => /backfill/i.test(d.message))).toBe(true);
+    expect(north.haipai.filter((t) => t === 12).length).toBe(2); // silently backfilled two 2m
+    void diagnostics;
     // East's discarded 2m was claimed → marked called.
     const east = game.kyokus[0].players[0];
     expect(east.turns.find((t) => t.discard === 12)?.called).toBe(true);
@@ -66,7 +66,9 @@ describe('stream transcription DSL', () => {
     // East has a partial known haipai; S/W/N skipped; 2z is East's first discard.
     const { game, diagnostics } = parseStream('e1 d7p 5567m ? ? ? 2z');
     const k = game.kyokus[0];
-    expect(k.players[0].haipai).toEqual([15, 15, 16, 17]); // 5m5m6m7m
+    // East's partial haipai (5m5m6m7m); the discarded 2z it didn't hold is
+    // reconciled back into the haipai as coming from the unrecorded tiles.
+    expect(k.players[0].haipai).toEqual([15, 15, 16, 17, 42]);
     expect(k.players[1].haipai).toEqual([]);               // South skipped
     expect(k.players[2].haipai).toEqual([]);
     expect(k.players[3].haipai).toEqual([]);
@@ -111,6 +113,18 @@ describe('stream transcription DSL', () => {
     expect(r.kind).toBe('ron');
     expect(r.deltas).toEqual([0, -4900, 4900, 0]);
     expect(r.deltas.reduce((a, b) => a + b, 0)).toBe(0); // balances
+  });
+
+  it('bare ron picks the seat whose hand completes, not a turn-order guess', () => {
+    // Partial haipai reconciled from the discards; West (Sekiguchi) is the only
+    // tenpai hand, so a bare "ron" must attribute the win to West — with no
+    // spurious "no yaku" / "out of step" warnings.
+    const s = 'e1 Asakura:46789p35s157z1358m Mizukoshi:23347m6z789s25p Sekiguchi:77z112267p2s Okada:888421m44s4z137p '
+      + '7z tpon 5s 3z x 6m 1z 8s 9p 1s 7s 2m 1m 4s 8m 8p 6z 6s x 2s 4z 8s x 5z x 8p 7m 4p 1p spon 2z 1z x 3m 1m 9m 8s 3p '
+      + 'x 2m 4m 4z x 5p 2z 6m x 4m x 1m x 6z x 6s x 3z 4s 6s 3s ron';
+    const { game, diagnostics } = parseStream(s);
+    expect(game.kyokus[0].result.winner).toBe(2); // West = Sekiguchi
+    expect(diagnostics.filter((d) => d.severity === 'warn')).toHaveLength(0);
   });
 
   it('computes ryuukyoku tenpai payments', () => {

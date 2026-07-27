@@ -57,10 +57,12 @@ describe('spliceRoundHeader', () => {
       ...blank, haipai: ['', '', '', '123456789p1234z'],
     });
     expect(out).toBe('e1 ? ? ? 123456789p1234z 1m 9p 2z 5s 3p 7z');
-    // and the parser agrees: a bare single tile ends the haipai section
+    // and the parser agrees: a bare single tile ends the haipai section, so the
+    // tokens are recorded as discards (1m, 2z, 3p — alternating with draws), not
+    // eaten as four haipai.
     const k = parseStream('e1 1m 9p 2z 5s 3p 7z').game.kyokus[0];
-    expect(k.players.every((p) => p.haipai.length === 0)).toBe(true);   // all haipai unknown
-    expect(k.players.some((p) => p.turns.some((t) => t.discard !== undefined))).toBe(true); // discards recorded
+    const discards = k.players.reduce((n, p) => n + p.turns.filter((t) => t.discard !== undefined).length, 0);
+    expect(discards).toBe(3);
   });
 
   it('returns text unchanged when the round token is absent', () => {

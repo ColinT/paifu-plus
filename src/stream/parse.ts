@@ -45,6 +45,9 @@ export interface StreamParseResult {
   diagnostics: Diagnostic[];
   /** Number of `?` placeholders awaiting correction. */
   missing: number;
+  /** For a still-open final hand: whose turn it is (current seat 0=E..3=N) and
+   *  whether they're about to draw or discard. Absent once the hand ends. */
+  pending?: { seat: number; expect: 'draw' | 'discard' };
 }
 
 interface Tok { text: string; start: number; end: number; }
@@ -231,11 +234,9 @@ export function parseStream(input: string): StreamParseResult {
     }
     turnObj.discard = tile ?? undefined;
     if (opts.riichi) { turnObj.riichi = true; p.riichi = true; sticks += 1; }
-    // Discarding a tile the player doesn't hold means the draw/discard stream is
-    // out of alignment — flag it, as the resulting log won't be a legal game.
-    if (tile !== null && !removeFromHand(p, tile)) {
-      warn(tok, `${['E', 'S', 'W', 'N'][playerSeat(p)]} discards ${tilesToNotation([tile])} but doesn't hold it (draw/discard out of step?)`);
-    }
+    // Discarding a tile not in the (partly recorded) hand: assume it came from
+    // the unrecorded haipai and backfill it, keeping the reconstruction sound.
+    if (tile !== null && !removeFromHand(p, tile)) backfillOrigin(p, tile, tok);
     lastDiscard = tile !== null ? { seat: playerSeat(p), tile } : null;
     lastDiscardTurn = turnObj;
     expect = 'draw';
@@ -245,10 +246,24 @@ export function parseStream(input: string): StreamParseResult {
   const playerSeat = (p: PS): Seat => (players!.indexOf(p) as Seat);
 
   /** Backfill missing copies of a tile into a player's hand + haipai (used when a
-   *  call is explicitly attributed but the hand wasn't fully entered). */
-  function ensureTiles(p: PS, tile: TenhouTile, need: number, tok: Tok) {
+   *  call is explicitly attributed but the hand wasn't fully entered). Silent —
+   *  a partly-entered haipai is the normal live-recording state. */
+  function ensureTiles(p: PS, tile: TenhouTile, need: number, _tok: Tok) {
     const deficit = need - countMatch(p, tile);
-    if (deficit > 0) { for (let i = 0; i < deficit; i++) { p.hand.push(tile); p.haipai.push(tile); } warn(tok, `backfilled ${deficit}×${tile} into ${['E', 'S', 'W', 'N'][playerSeat(p)]}'s hand`, 'info'); }
+    for (let i = 0; i < deficit; i++) { p.hand.push(tile); p.haipai.push(tile); }
+  }
+
+  /** A tile discarded but not in the (partly recorded) hand must have come from
+   *  the unrecorded haipai — record it there so the reconstruction stays
+   *  consistent. Warn only if that would push the hand past a legal size. */
+  function backfillOrigin(p: PS, tile: TenhouTile, tok: Tok) {
+    const expected = playerSeat(p) === 0 ? 14 : 13;
+    const copies = p.haipai.filter((h) => normalizeRed(h) === normalizeRed(tile)).length;
+    if (p.haipai.length >= expected || copies >= 4) {
+      warn(tok, `${['E', 'S', 'W', 'N'][playerSeat(p)]} discards ${tilesToNotation([tile])} but doesn't hold it (draw/discard out of step?)`);
+      return;
+    }
+    p.haipai.push(tile);
   }
 
   function handleCall(tok: Tok, call: ParsedCall) {
@@ -356,7 +371,9 @@ export function parseStream(input: string): StreamParseResult {
       const p = players![haipaiSeat];
       p.name = name || pendingName; p.hand = tiles.slice();
       const expected = haipaiSeat === 0 ? 14 : 13;
-      if (tiles.length !== expected) warn(tok, `${['E', 'S', 'W', 'N'][haipaiSeat]} haipai has ${tiles.length} tiles (expected ${expected})`);
+      // Only flag too MANY tiles; a short haipai is expected while recording and
+      // gets reconciled from the discards/calls.
+      if (tiles.length > expected) warn(tok, `${['E', 'S', 'W', 'N'][haipaiSeat]} haipai has ${tiles.length} tiles (expected ${expected})`);
       // Dealer holds 14 tiles: haipai is the first 13, the 14th is the first
       // draw. Keep ALL 14 in the tracked hand (only the emitted haipai is 13),
       // otherwise a later discard of the 14th tile looks illegal.
@@ -458,9 +475,25 @@ export function parseStream(input: string): StreamParseResult {
     return { deltas: toFixedDeltas(deltas), han: sr.han, fu: sr.fu, yaku: sr.yaku, scoreText: sr.text };
   }
 
+  /** True if seat w's concealed hand + the discard forms a valid winning hand. */
+  function ronWins(w: Seat, winningTile: TenhouTile): boolean {
+    const p = players![w];
+    if (p.hand.length + 3 * p.calls.length !== 13) return false; // hand not fully known yet
+    return scoreWin({
+      concealed: p.hand.slice(), melds: p.calls.map((c) => ({ type: c.type, tiles: c.tiles })), winningTile, isTsumo: false,
+      seatWind: 27 + w, roundWind: 27 + Math.floor(round / 4), doraIndicators: dora, uraIndicators: ura, riichi: p.riichi, rules: {},
+    }).valid;
+  }
+
   /** Score one ron hand into an Agari (isolated, fixed-index deltas). */
   function scoreRon(tok: Tok, w: Seat, winningTile: TenhouTile, from: Seat, honbaArg: number, sticksArg: number): Agari {
     const p = players![w];
+    // A partially recorded haipai leaves the hand short; say so plainly rather
+    // than reporting "no yaku". Fill in the haipai (quick-edit fields) to score.
+    if (p.hand.length + 3 * p.calls.length !== 13) {
+      warn(tok, `${['E', 'S', 'W', 'N'][w]}'s hand is incomplete (${p.hand.length + 3 * p.calls.length}/13 tiles) — fill in the haipai to score`, 'info');
+      return { winner: fixedIndex(w, round), winningTile, deltas: [0, 0, 0, 0] };
+    }
     const sr = scoreWin({
       concealed: p.hand.slice(), melds: p.calls.map((c) => ({ type: c.type, tiles: c.tiles })), winningTile, isTsumo: false,
       seatWind: 27 + w, roundWind: 27 + Math.floor(round / 4),
@@ -493,7 +526,17 @@ export function parseStream(input: string): StreamParseResult {
       else {
         const prefix = kind.slice(0, -3); // strip "ron"
         if (prefix) winners = [...prefix].map((ch) => SEAT_LETTER[ch]).filter((s, i, a) => a.indexOf(s) === i && s !== from);
-        else winners = [((midTurnSeat !== null && isExpect('draw') ? turn : (midTurnSeat ?? turn)) as Seat)].filter((s) => s !== from);
+        else {
+          // Bare "ron": the winner is whoever's hand actually completes on the
+          // discard — not a turn-order guess. Fall back with a clear hint if the
+          // hands are too incomplete to tell.
+          const complete = ([0, 1, 2, 3] as Seat[]).filter((s) => s !== from && ronWins(s, winTile));
+          if (complete.length === 1) winners = complete;
+          else {
+            winners = [((midTurnSeat !== null && isExpect('draw') ? turn : (midTurnSeat ?? turn)) as Seat)].filter((s) => s !== from);
+            warn(tok, "couldn't tell who won this ron — prefix the winner's seat (e.g. wron for West)", 'info');
+          }
+        }
       }
       if (!winners.length) { warn(tok, 'ron names no valid winner'); closeKyoku({ kind: 'ryuukyoku', deltas: [0, 0, 0, 0] }); return; }
       // Riichi sticks go to the winner nearest the discarder's right (head bump).
@@ -517,10 +560,18 @@ export function parseStream(input: string): StreamParseResult {
     closeKyoku(result);
   }
 
+  // Whose turn it is in a still-open final hand (for the live turn indicator):
+  // the seat about to draw, or the one mid-turn about to discard.
+  let pending: StreamParseResult['pending'];
+  if (players && isPhase('play')) {
+    const acting = (isExpect('draw') ? turn : (midTurnSeat ?? turn)) as Seat;
+    pending = { seat: acting, expect: expect as 'draw' | 'discard' };
+  }
+
   // finalize a trailing open hand
   if (players) closeKyoku();
 
   const names = (kyokus[0]?.players.map((p) => p.name) ?? ['P1', 'P2', 'P3', 'P4']) as [string, string, string, string];
   const game: Game = { meta: { title: ['Transcribed', ''], names, rule: { disp: '', aka: 0 } }, kyokus };
-  return { game, diagnostics: diags, missing };
+  return { game, diagnostics: diags, missing, pending };
 }

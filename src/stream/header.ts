@@ -94,3 +94,32 @@ export function spliceRoundHeader(text: string, kyokuIndex: number, edit: Header
   }
   return text.slice(0, round.end) + head + rest + text.slice(kyokuEnd);
 }
+
+/**
+ * The haipai *as recorded* for the `kyokuIndex`-th hand, per current seat
+ * (E,S,W,N) — the raw tile notation the transcriber typed, '' where a seat is a
+ * `?` placeholder or absent. Used to fill the quick-edit fields so they show
+ * what was entered, not the tiles the parser backfilled from later play.
+ */
+export function readHaipai(text: string, kyokuIndex: number): string[] {
+  const out = ['', '', '', ''];
+  const tk = tokenize(text);
+  const rounds = tk.filter((t) => RE_ROUND.test(t.text));
+  const round = rounds[kyokuIndex];
+  if (!round) return out;
+  const ri = tk.indexOf(round);
+  const endTok = rounds[kyokuIndex + 1] ? tk.indexOf(rounds[kyokuIndex + 1]) : tk.length;
+  let seat = 0;
+  for (let i = ri + 1; i < endTok && seat < 4; i++) {
+    const t = tk[i].text;
+    if (isDoraTok(t)) continue;
+    if (t === '?') { seat++; continue; }
+    const colon = t.indexOf(':');
+    const body = colon >= 0 ? t.slice(colon + 1) : t;
+    const n = parseTileNotation(body).length;
+    if (n === 1 && colon < 0) break;   // a bare discard — haipai section is over
+    if (n === 0) continue;             // a bare name token
+    out[seat++] = body;                // recorded haipai tiles for this seat
+  }
+  return out;
+}
