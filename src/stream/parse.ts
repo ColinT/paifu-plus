@@ -113,6 +113,7 @@ interface PS {
   turns: Turn[];
   calls: Call[];
   riichi: boolean;
+  startScore: number;
 }
 
 export function parseStream(input: string): StreamParseResult {
@@ -133,6 +134,7 @@ export function parseStream(input: string): StreamParseResult {
   let phase: Phase = 'need-round';
   let haipaiSeat = 0;
   let pendingName = '';
+  let pendingScore: number | null = null;
   let turn: Seat = 0;
   let expect: Expect = 'discard';
   const isPhase = (p: Phase) => (phase as Phase) === p;
@@ -140,7 +142,7 @@ export function parseStream(input: string): StreamParseResult {
   let lastDiscard: { seat: Seat; tile: TenhouTile } | null = null;
   let lastDiscardTurn: Turn | null = null;
 
-  const freshPlayers = (): PS[] => Array.from({ length: 4 }, () => ({ name: '', hand: [], haipai: [], turns: [], calls: [], riichi: false }));
+  const freshPlayers = (): PS[] => Array.from({ length: 4 }, () => ({ name: '', hand: [], haipai: [], turns: [], calls: [], riichi: false, startScore: 25000 }));
 
   function closeKyoku(result?: KyokuResult) {
     if (!players) return;
@@ -154,7 +156,7 @@ export function parseStream(input: string): StreamParseResult {
       for (const c of p.calls) if (c.fromSeat !== undefined) c.fromSeat = fixedIndex(c.fromSeat, round);
       ordered[fi] = {
         seat: fi, name: p.name || `Player ${fi + 1}`,
-        startScore: 25000, scoreDelta: 0,
+        startScore: p.startScore, scoreDelta: 0,
         haipai: p.haipai.slice(), turns: p.turns, calls: p.calls,
       };
     }
@@ -209,7 +211,7 @@ export function parseStream(input: string): StreamParseResult {
     sticks = rest[2] ? parseInt(rest[2], 10) : 0;
     startSticks = sticks;
     dora = []; ura = []; players = freshPlayers();
-    phase = 'haipai'; haipaiSeat = 0; pendingName = ''; turn = 0; expect = 'discard'; lastDiscard = null;
+    phase = 'haipai'; haipaiSeat = 0; pendingName = ''; pendingScore = null; turn = 0; expect = 'discard'; lastDiscard = null;
   }
 
   function doDraw(p: PS, tok: Tok, tile: TenhouTile | null) {
@@ -352,24 +354,39 @@ export function parseStream(input: string): StreamParseResult {
     if (um) { ura.push(...parseTileNotation(um[2]).map(doraToIndicator)); continue; }
 
     if (isPhase('haipai')) {
-      const advance = () => { pendingName = ''; haipaiSeat++; if (haipaiSeat === 4) { phase = 'play'; turn = 0; expect = 'discard'; midTurnSeat = 0; } };
+      const advance = () => { pendingName = ''; pendingScore = null; haipaiSeat++; if (haipaiSeat === 4) { phase = 'play'; turn = 0; expect = 'discard'; midTurnSeat = 0; } };
       // '?' skips this seat's haipai (unknown — reconstructed later from calls).
-      // A name typed just before it (e.g. "Okada ?") still names the seat.
-      if (t === '?') { missing++; if (pendingName) players![haipaiSeat].name = pendingName; warn(tok, `${['E', 'S', 'W', 'N'][haipaiSeat]} haipai skipped`, 'info'); advance(); continue; }
-      // A player name may be attached as "name:tiles" or as a separate token
-      // before the haipai (e.g. "Okada 996p...").
-      const colon = t.indexOf(':');
-      const name = colon >= 0 ? t.slice(0, colon) : '';
-      const body = colon >= 0 ? t.slice(colon + 1) : t;
+      // A name/score typed just before it (e.g. "Okada 24000 ?") still applies.
+      if (t === '?') {
+        missing++;
+        if (pendingName) players![haipaiSeat].name = pendingName;
+        if (pendingScore !== null) players![haipaiSeat].startScore = pendingScore;
+        warn(tok, `${['E', 'S', 'W', 'N'][haipaiSeat]} haipai skipped`, 'info'); advance(); continue;
+      }
+      // A seat may be "name:score:tiles" / "name:tiles" (colon) or those parts as
+      // separate tokens before the haipai (e.g. "Okada 24000 996p…"). Score is a
+      // bare integer; omit it to default to 25000.
+      const parts = t.split(':');
+      let name = '', scoreStr = '', body = t;
+      if (parts.length === 3) { [name, scoreStr, body] = parts; }
+      else if (parts.length === 2) { [name, body] = parts; }
       const tiles = parseTileNotation(body);
-      if (!tiles.length) { pendingName = t; continue; } // a non-tile token = the name
+      if (!tiles.length) {
+        // A standalone score (bare integer) vs a name token before the haipai.
+        if (parts.length === 1 && /^\d+$/.test(t)) pendingScore = parseInt(t, 10);
+        else pendingName = t;
+        continue;
+      }
       // A bare single tile can't be a haipai (those are 13–14 tiles): the haipai
       // section is over. Leave the remaining seats unknown and reprocess this
       // token as the first play — so live-recorded discards aren't eaten as haipai.
-      if (tiles.length === 1 && colon < 0) { phase = 'play'; turn = 0; expect = 'discard'; midTurnSeat = 0; }
+      if (tiles.length === 1 && parts.length === 1 && !pendingName && pendingScore === null) { phase = 'play'; turn = 0; expect = 'discard'; midTurnSeat = 0; }
       else {
       const p = players![haipaiSeat];
-      p.name = name || pendingName; p.hand = tiles.slice();
+      p.name = name || pendingName;
+      if (scoreStr && /^\d+$/.test(scoreStr)) p.startScore = parseInt(scoreStr, 10);
+      else if (pendingScore !== null) p.startScore = pendingScore;
+      p.hand = tiles.slice();
       const expected = haipaiSeat === 0 ? 14 : 13;
       // Only flag too MANY tiles; a short haipai is expected while recording and
       // gets reconciled from the discards/calls.

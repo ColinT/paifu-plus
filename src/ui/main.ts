@@ -100,20 +100,22 @@ const isDefaultName = (n: string) => !n || /^Player \d$/.test(n);
 const doraField = el('input', { class: 'q-in', spellcheck: 'false', placeholder: 'dora 6p', title: 'Dora indicator — the dead-wall tile (0p = red 5p)' }) as HTMLInputElement;
 const uraField = el('input', { class: 'q-in', spellcheck: 'false', placeholder: 'ura 3s', title: 'Ura-dora indicator(s), revealed under a riichi win' }) as HTMLInputElement;
 const nameFields: HTMLInputElement[] = [];
+const scoreFields: HTMLInputElement[] = [];
 const haipaiFields: HTMLInputElement[] = [];
 const seatLabels: HTMLElement[] = [];
 // First column holds the dora indicator (aligned with the name row) and the ura
 // indicator below it (aligned with the haipai row); each seat column is wind /
-// name / haipai, so the fields line up across.
+// name+score / haipai, so the fields line up across.
 const quickRow = el('div', { class: 'stream-quick' }, [
   el('div', { class: 'q-field' }, [el('span', { class: 'q-lbl' }, ['Dora / Ura Indicators']), doraField, uraField]),
 ]);
 for (let s = 0; s < 4; s++) {
   const lbl = el('span', { class: 'q-lbl' }, [WINDS[s]]);
   const nameInp = el('input', { class: 'q-in q-name', spellcheck: 'false', placeholder: 'name' }) as HTMLInputElement;
+  const scoreInp = el('input', { class: 'q-in q-score', type: 'number', min: '0', step: '100', placeholder: '25000', title: 'Starting points' }) as HTMLInputElement;
   const inp = el('input', { class: 'q-in q-hp', spellcheck: 'false', placeholder: 'haipai' }) as HTMLInputElement;
-  seatLabels.push(lbl); nameFields.push(nameInp); haipaiFields.push(inp);
-  quickRow.append(el('div', { class: 'q-field' }, [lbl, nameInp, inp]));
+  seatLabels.push(lbl); nameFields.push(nameInp); scoreFields.push(scoreInp); haipaiFields.push(inp);
+  quickRow.append(el('div', { class: 'q-field' }, [lbl, el('div', { class: 'q-namerow' }, [nameInp, scoreInp]), inp]));
 }
 const streamBody = el('div', { class: 'stream-panel' }, [quickRow, streamInput, diagEl]);
 
@@ -132,7 +134,7 @@ function renderTurnIndicator() {
 function populateQuickFields() {
   if (pendingQuickEdit) return; // fields hold unsaved input — don't clobber it
   const k = state.game.kyokus[state.activeKyoku];
-  if (!k) { doraField.value = ''; uraField.value = ''; nameFields.forEach((f) => (f.value = '')); haipaiFields.forEach((f) => (f.value = '')); return; }
+  if (!k) { doraField.value = ''; uraField.value = ''; nameFields.forEach((f) => (f.value = '')); scoreFields.forEach((f) => (f.value = '')); haipaiFields.forEach((f) => (f.value = '')); return; }
   doraField.value = tilesToNotation(k.doraIndicators);
   uraField.value = tilesToNotation(k.uraIndicators);
   // Haipai fields mirror what was *recorded* (from the raw stream), not the tiles
@@ -142,10 +144,11 @@ function populateQuickFields() {
     const p = k.players[(k.round + s) % 4];
     haipaiFields[s].value = recorded[s];
     nameFields[s].value = isDefaultName(p.name) ? '' : p.name;
+    scoreFields[s].value = String(p.startScore);
   }
 }
 
-const quickFieldValues = () => ({ dora: doraField.value, ura: uraField.value, haipai: haipaiFields.map((f) => f.value), names: nameFields.map((f) => f.value) });
+const quickFieldValues = () => ({ dora: doraField.value, ura: uraField.value, haipai: haipaiFields.map((f) => f.value), names: nameFields.map((f) => f.value), scores: scoreFields.map((f) => f.value) });
 const isRoundTok = (t: string) => /^[eswn][1-4]([._\-][0-9]+){0,2}$/i.test(t);
 const hasRoundFor = (text: string, idx: number) => text.split(/[\s,]+/).filter(isRoundTok).length > idx;
 
@@ -153,7 +156,7 @@ const hasRoundFor = (text: string, idx: number) => text.split(/[\s,]+/).filter(i
 function onQuickEdit() {
   const edit = quickFieldValues();
   if (!hasRoundFor(state.streamText, state.activeKyoku)) {
-    pendingQuickEdit = !!(edit.dora || edit.ura || edit.haipai.some(Boolean) || edit.names.some(Boolean));
+    pendingQuickEdit = !!(edit.dora || edit.ura || edit.haipai.some(Boolean) || edit.names.some(Boolean) || edit.scores.some((s) => s && s !== '25000'));
     return; // no round yet — keep the field values and wait for it
   }
   pendingQuickEdit = false;
@@ -165,7 +168,7 @@ function onQuickEdit() {
   turnState = pending ?? null;
   renderForm(); renderBoardPanel(); renderJson(); renderDiagnostics(diagnostics, missing); renderTurnIndicator();
 }
-[doraField, uraField, ...nameFields, ...haipaiFields].forEach((f) => f.addEventListener('input', onQuickEdit));
+[doraField, uraField, ...nameFields, ...scoreFields, ...haipaiFields].forEach((f) => f.addEventListener('input', onQuickEdit));
 
 // board / form / json bodies
 const boardBody = el('div', { class: 'board-wrap' });

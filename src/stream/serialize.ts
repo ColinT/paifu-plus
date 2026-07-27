@@ -65,7 +65,11 @@ export function kyokuToStream(k: Kyoku, rk: KyokuReplay): string {
     const tiles = [...p.haipai];
     if (s === 0 && p.turns[0]?.draw !== undefined) tiles.push(p.turns[0].draw);
     const note = tilesToNotation(tiles);
-    toks.push(isDefaultName(p.name) ? note : `${p.name.replace(/\s+/g, '_')}:${note}`);
+    const name = isDefaultName(p.name) ? '' : p.name.replace(/\s+/g, '_');
+    // "name:score:tiles" when either differs from default (score 25000); else the
+    // compact "name:tiles" or bare tiles.
+    if (p.startScore !== 25000) toks.push(`${name}:${p.startScore}:${note}`);
+    else toks.push(name ? `${name}:${note}` : note);
   }
 
   // Play order from the replay engine. The dealer's opening tile is already

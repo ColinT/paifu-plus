@@ -3,7 +3,7 @@ import { spliceRoundHeader } from '../src/stream/header.js';
 import { parseStream } from '../src/stream/parse.js';
 
 describe('spliceRoundHeader', () => {
-  const blank = { dora: '', ura: '', haipai: ['', '', '', ''], names: ['', '', '', ''] };
+  const blank = { dora: '', ura: '', haipai: ['', '', '', ''], names: ['', '', '', ''], scores: ['', '', '', ''] };
 
   it('fills haipai placeholders while keeping the round token and plays', () => {
     const out = spliceRoundHeader('e1 ? ? ? ? 1z 9p 8p ryuukyoku', 0, {

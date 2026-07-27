@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseStream } from '../src/stream/parse.js';
+import { gameToStream } from '../src/stream/serialize.js';
 
 describe('stream transcription DSL', () => {
   it('parses round, dora, haipai (dealer 14→13), riichi sticks', () => {
@@ -125,6 +126,19 @@ describe('stream transcription DSL', () => {
     const { game, diagnostics } = parseStream(s);
     expect(game.kyokus[0].result.winner).toBe(2); // West = Sekiguchi
     expect(diagnostics.filter((d) => d.severity === 'warn')).toHaveLength(0);
+  });
+
+  it('parses starting scores (name:score:tiles and space form), defaulting to 25000', () => {
+    const base = ' 123456789p1234z 123456789s1234z 123456789p1234z 1z ryuukyoku';
+    const colon = parseStream('e1 Okada:24000:123456789m1234z1z' + base).game.kyokus[0];
+    expect([colon.players[0].name, colon.players[0].startScore]).toEqual(['Okada', 24000]);
+    const space = parseStream('e1 Okada 31000 123456789m1234z1z' + base).game.kyokus[0];
+    expect([space.players[0].name, space.players[0].startScore]).toEqual(['Okada', 31000]);
+    const def = parseStream('e1 Okada:123456789m1234z1z' + base).game.kyokus[0];
+    expect(def.players[0].startScore).toBe(25000); // omitted ⇒ default
+    // survives a serialize round-trip
+    expect(parseStream(gameToStream(colon2game('Okada', 24000))).game.kyokus[0].players[0].startScore).toBe(24000);
+    function colon2game(n: string, sc: number) { return parseStream(`e1 ${n}:${sc}:123456789m1234z1z${base}`).game; }
   });
 
   it('computes ryuukyoku tenpai payments', () => {

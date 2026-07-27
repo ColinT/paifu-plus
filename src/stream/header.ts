@@ -36,6 +36,8 @@ export interface HeaderEdit {
   haipai: string[];
   /** Per current-seat player name to prefix ("name:tiles"); '' ⇒ bare tiles. */
   names: string[];
+  /** Per current-seat starting score; '' or "25000" ⇒ default (no score token). */
+  scores: string[];
 }
 
 /**
@@ -77,10 +79,19 @@ export function spliceRoundHeader(text: string, kyokuIndex: number, edit: Header
   for (let s = 0; s < 4; s++) {
     const tiles = (edit.haipai[s] || '').trim();
     const name = (edit.names[s] || '').trim().replace(/[\s:]+/g, '_');
-    // "name:tiles" when the haipai is known; "name ?" keeps the name on a still-
-    // unknown haipai (a bare "?" otherwise), so names can be filled in first.
-    if (tiles) head += ` ${name ? `${name}:` : ''}${tiles}`;
-    else head += name ? ` ${name} ?` : ' ?';
+    const scoreRaw = (edit.scores[s] || '').trim();
+    const score = /^\d+$/.test(scoreRaw) && scoreRaw !== '25000' ? scoreRaw : '';
+    const body = tiles || '?';
+    if (score) {
+      // Non-default score → space form "name score tiles" (name optional).
+      head += ' ' + [name, score, body].filter(Boolean).join(' ');
+    } else if (tiles) {
+      // Default score: compact "name:tiles" or bare tiles.
+      head += ` ${name ? `${name}:` : ''}${tiles}`;
+    } else {
+      // Unknown haipai: keep the name so it isn't lost (a bare "?" otherwise).
+      head += name ? ` ${name} ?` : ' ?';
+    }
   }
 
   // Play region (after the header, up to the next hand), with any stray dora/ura
