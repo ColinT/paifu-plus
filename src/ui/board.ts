@@ -85,7 +85,14 @@ function reconstructHand(p: PlayerHand): TenhouTile[] {
   for (const t of p.turns) if (t.draw !== undefined) hand.push(t.draw);
   const remove = (tile: TenhouTile) => { const i = hand.indexOf(tile); if (i >= 0) hand.splice(i, 1); };
   for (const t of p.turns) if (t.discard !== undefined) remove(t.tsumogiri ? t.draw! : t.discard);
-  for (const c of p.calls) for (const mt of c.tiles) remove(mt);
+  for (const c of p.calls) {
+    // Only the tiles that came from THIS hand leave it — not the called tile,
+    // which came from an opponent's discard. Removing it too would wrongly drop
+    // a same-valued tile the player legitimately holds (e.g. a later draw).
+    const fromHand = [...c.tiles];
+    if (c.calledTile !== undefined) { const i = fromHand.indexOf(c.calledTile); if (i >= 0) fromHand.splice(i, 1); }
+    for (const mt of fromHand) remove(mt);
+  }
   return hand.sort(compareTiles);
 }
 
@@ -96,6 +103,13 @@ export function kyokuToBoardView(k: Kyoku, title?: string): BoardView {
     // On a tsumo win the winning tile is held apart on the right.
     if (k.result.kind === 'tsumo' && k.result.winner === i && k.result.winningTile !== undefined) {
       drawn = k.result.winningTile; const idx = hand.indexOf(drawn); if (idx >= 0) hand.splice(idx, 1);
+    } else {
+      // Mid-hand: a drawn-but-not-yet-discarded tile is held apart too, so the
+      // just-drawn tile reads as such rather than sorting into the hand.
+      const last = p.turns[p.turns.length - 1];
+      if (last && last.draw !== undefined && last.discard === undefined) {
+        drawn = last.draw; const idx = hand.indexOf(drawn); if (idx >= 0) hand.splice(idx, 1);
+      }
     }
     return {
       name: p.name, score: p.startScore + p.scoreDelta, riichi: p.turns.some((t) => t.riichi),
