@@ -6,6 +6,7 @@ import { renderBoardView, scoreEnglish } from './board.js';
 import type { BoardView, BoardResult } from './board.js';
 import { tileImg } from './tileEl.js';
 import { compareTiles } from '../core/tiles.js';
+import type { TenhouTile } from '../core/tiles.js';
 import { el, clear } from './dom.js';
 import { icon } from './icon.js';
 import { logId, loadComments, saveComments, shareUrl } from './share.js';
@@ -16,7 +17,17 @@ interface ReplayState {
   log: unknown; id: string; comments: Comment[];
 }
 
-function resultFromLog(result: any, step: Step): BoardResult | undefined {
+/** The seat's most recent drawn tile across the replay steps (the tsumo tile). */
+function lastDrawOf(k: KyokuReplay, seat: number): TenhouTile | undefined {
+  for (let i = k.steps.length - 1; i >= 0; i--) {
+    const s = k.steps[i];
+    if (s.active === seat && s.action === 'draw' && s.tile !== undefined) return s.tile;
+  }
+  return undefined;
+}
+
+function resultFromLog(k: KyokuReplay, step: Step): BoardResult | undefined {
+  const result = k.result;
   if (!Array.isArray(result)) return undefined;
   const kind = String(result[0] ?? '');
   if (kind.includes('流')) return { kind: 'ryuukyoku', winners: [] };
@@ -25,10 +36,11 @@ function resultFromLog(result: any, step: Step): BoardResult | undefined {
   const details = result.filter((_: unknown, i: number) => i >= 2 && i % 2 === 0 && Array.isArray(result[i])) as any[][];
   if (!details.length) return undefined;
   const from = Number(details[0][1]);
-  const isTsumo = Number(details[0][0]) === from;
+  const winner = Number(details[0][0]);
+  const isTsumo = winner === from;
   const winners = details.map((d) => ({ seat: Number(d[0]), scoreEn: scoreEnglish(typeof d[3] === 'string' ? d[3] : undefined) }));
   const winningTile = isTsumo
-    ? (step.tile ?? step.players[Number(details[0][0])]?.drawn ?? undefined)
+    ? (step.tile ?? step.players[winner]?.drawn ?? lastDrawOf(k, winner))  // the winner's self-drawn tile
     : step.players[from]?.river.at(-1)?.tile;
   return { kind: isTsumo ? 'tsumo' : 'ron', winners, loser: isTsumo ? undefined : from, winningTile: winningTile ?? undefined };
 }
@@ -45,15 +57,24 @@ function stepToBoardView(g: ReplayGame, k: KyokuReplay, step: Step): BoardView {
       melds: p.melds.map((m) => ({ type: m.type, tiles: m.tiles, called: m.called, from: m.from })),
     };
   }) as BoardView['seats'];
-  return { round: k.round, honba: k.honba, sticks: k.sticks, dora: k.dora, ura: atEnd ? k.ura : [], seats, result: atEnd ? resultFromLog(k.result, step) : undefined, highlight: { seat: step.active, tile: step.tile }, title: g.title };
+  return { round: k.round, honba: k.honba, sticks: k.sticks, dora: k.dora, ura: atEnd ? k.ura : [], seats, result: atEnd ? resultFromLog(k, step) : undefined, highlight: { seat: step.active, tile: step.tile }, title: g.title };
 }
 
-function stepLabel(g: ReplayGame, step: Step): (Node | string)[] {
-  const name = g.names[step.active] ?? `P${step.active + 1}`;
-  const tile = step.tile !== undefined ? [tileImg(step.tile, 'label-tile')] : [];
+function stepLabel(g: ReplayGame, k: KyokuReplay, step: Step): (Node | string)[] {
+  const nameOf = (s: number) => g.names[s] ?? `P${s + 1}`;
+  const tileImgs = (t?: TenhouTile) => (t !== undefined ? [tileImg(t, 'label-tile')] : []);
   if (step.action === 'haipai') return ['Deal'];
-  if (step.action === 'end') return [step.label, ...tile];
-  return [`${name}: ${step.label}`, ...tile];
+  if (step.action === 'end') {
+    // Name the winner(s), the call, and the winning tile — e.g. "Mizukoshi tsumo 8s".
+    const res = resultFromLog(k, step);
+    if (!res) return [step.label, ...tileImgs(step.tile)];
+    if (res.kind === 'ryuukyoku') return ['Exhaustive draw'];
+    const who = res.winners.map((w) => nameOf(w.seat)).join(' + ');
+    const parts: (Node | string)[] = [`${who} ${res.kind} `, ...tileImgs(res.winningTile)];
+    if (res.kind === 'ron' && res.loser !== undefined) parts.push(` off ${nameOf(res.loser)}`);
+    return parts;
+  }
+  return [`${nameOf(step.active)}: ${step.label}`, ...tileImgs(step.tile)];
 }
 
 export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; onLog?: (log: any) => void; onRoundChange?: (ky: number) => void }) {
@@ -151,7 +172,7 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
       shareDropdown(),
     );
     clear(labelEl);
-    labelEl.append(...stepLabel(state.game!, k.steps[state.step]));
+    labelEl.append(...stepLabel(state.game!, k, k.steps[state.step]));
     renderComments();
   }
 
