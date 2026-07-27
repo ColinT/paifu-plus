@@ -37,21 +37,18 @@ export interface BoardView {
 
 /** Top-left compass: record name, round, honba / riichi-stick counts, and the
  *  actual dora (and ura, set apart) — not the indicators. */
+/** Game-info header: a single horizontal bar above the board (record name,
+ *  round, honba, riichi deposit, dora / ura). */
 function compassEl(view: BoardView): HTMLElement {
   const deposit = view.sticks + view.seats.filter((s) => s.riichi).length; // carried + this round's bets
-  const row: (Node | string)[] = [
-    el('div', { class: 'compass-round' }, [roundName(view.round)]),
-    el('div', { class: 'compass-mid' }, [
-      el('div', { class: 'compass-count', title: `${view.honba} honba` }, [el('span', { class: 'pt-stick honba' }, [el('span', { class: 'pips' })]), String(view.honba)]),
-      el('div', { class: 'compass-count', title: `${deposit} riichi stick(s) in deposit` }, [el('span', { class: 'pt-stick riichi' }), String(deposit)]),
-    ]),
-  ];
-  if (view.dora.length) row.push(el('div', { class: 'compass-dora' }, view.dora.map((t) => miniTile(indicatorToDora(t)))));
-  if (view.ura.length) row.push(el('div', { class: 'compass-ura' }, view.ura.map((t) => miniTile(indicatorToDora(t)))));
-  return el('div', { class: 'compass' }, [
-    ...(view.title ? [el('div', { class: 'compass-title' }, [view.title])] : []),
-    el('div', { class: 'compass-row' }, row),
-  ]);
+  const items: (Node | string)[] = [];
+  if (view.title) items.push(el('div', { class: 'compass-title' }, [view.title]));
+  items.push(el('div', { class: 'compass-round' }, [roundName(view.round)]));
+  items.push(el('div', { class: 'compass-count', title: `${view.honba} honba` }, [el('span', { class: 'pt-stick honba' }, [el('span', { class: 'pips' })]), String(view.honba)]));
+  items.push(el('div', { class: 'compass-count', title: `${deposit} riichi stick(s) in deposit` }, [el('span', { class: 'pt-stick riichi' }), String(deposit)]));
+  if (view.dora.length) items.push(el('div', { class: 'compass-dora' }, [el('span', { class: 'compass-lbl' }, ['Dora']), ...view.dora.map((t) => miniTile(indicatorToDora(t)))]));
+  if (view.ura.length) items.push(el('div', { class: 'compass-ura' }, [el('span', { class: 'compass-lbl' }, ['Ura']), ...view.ura.map((t) => miniTile(indicatorToDora(t)))]));
+  return el('div', { class: 'compass' }, items);
 }
 
 const WIN_LIMITS: Record<string, string> = {
@@ -210,7 +207,9 @@ export function renderBoardView(container: HTMLElement, view: BoardView | undefi
   const center = el('div', { class: 'pond-center' }, [scoreBlock(view, 2), scoreBlock(view, 3), mid, scoreBlock(view, 1), scoreBlock(view, 0)]);
   const pond = el('div', { class: 'pond' }, [center]);
   for (let s = 0; s < 4; s++) pond.append(riverEl(view.seats[s].river, s), meldsEl(view.seats[s].melds, s));
-  container.append(el('div', { class: 'board' }, [compassEl(view), station(view, 2, rerender), station(view, 3, rerender), pond, station(view, 1, rerender), station(view, 0, rerender)]));
+  const board = el('div', { class: 'board' }, [station(view, 2, rerender), station(view, 3, rerender), pond, station(view, 1, rerender), station(view, 0, rerender)]);
+  // Game info is its own horizontal row above the board, not a floating overlay.
+  container.append(el('div', { class: 'board-area' }, [compassEl(view), board]));
 }
 
 /** Convenience wrapper for the editor's live board. */
