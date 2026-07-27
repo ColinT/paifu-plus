@@ -3,7 +3,7 @@ import { importPdf, readEmbeddedLog } from '../pdf/browser.js';
 import { gameToPaifuPdf } from '../pdf/paifu.js';
 import { gameToTenhou, tenhouCompatible, hasNonTenhouTiles } from '../core/tenhou.js';
 import { tenhouToGame } from '../core/tenhouImport.js';
-import type { Game } from '../core/model.js';
+import type { Game, Kyoku } from '../core/model.js';
 import { openDialog } from './dialog.js';
 import { parseStream } from '../stream/parse.js';
 import type { Diagnostic } from '../stream/parse.js';
@@ -12,7 +12,7 @@ import { spliceRoundHeader, readHaipai, roundRegions } from '../stream/header.js
 import { applyCarryOver } from '../stream/carryover.js';
 import type { CarryConflict } from '../stream/carryover.js';
 import { tilesToNotation } from '../core/tiles.js';
-import { newGame, gameFromKyokus, roundName } from './state.js';
+import { newGame, gameFromKyokus, roundName, emptyKyoku } from './state.js';
 import type { EditorState } from './state.js';
 import { renderKyoku } from './editor.js';
 import { renderBoard } from './board.js';
@@ -23,17 +23,23 @@ import type { SaveMeta } from './storage.js';
 import { el, clear } from './dom.js';
 import { icon } from './icon.js';
 
-const state: EditorState & { streamText: string } = { game: newGame(), activeKyoku: 0, streamText: '' };
+// One editable DSL text per round (a positional slot). The textarea edits the
+// active slot; a slot survives even when its text has no round token yet — so
+// clearing "e2" to retype it as another round doesn't delete the tab. The game
+// model is kept 1:1 with the slots (a tokenless slot becomes a placeholder), so
+// activeKyoku indexes both. state.game stays authoritative until a slot is
+// edited (preserving imported/loaded fidelity), then that reparse takes over.
+const state: EditorState & { roundTexts: string[] } = { game: newGame(), activeKyoku: 0, roundTexts: [''] };
+// Per-slot flag: true where the slot has no round token (a WIP placeholder).
+let slotPlaceholder: boolean[] = [false];
 
 // The save slot the current game is linked to (set on Save or Load). While set,
 // Save overwrites that slot; a full-game import/load clears it so the next Save
 // creates a fresh record instead of clobbering the loaded one.
 let currentSaveId: string | null = null;
 
-// The stream textarea shows only the active round; the full multi-round DSL
-// lives in state.streamText (still the canonical form for parse/save/export).
-// Cross-round carry-over conflicts from the last parse, surfaced as warnings on
-// the round they belong to.
+// Cross-round carry-over conflicts from the last rebuild, surfaced as warnings
+// on the round they belong to.
 let carryConflicts: CarryConflict[] = [];
 
 // A quick-edit (name/haipai/dora/ura) typed before its round token exists has
@@ -65,7 +71,7 @@ function setMode(m: 'editor' | 'replay') {
 }
 
 const replay = mountReplay(replayEl, {
-  getEditorLog: () => gameToTenhou(state.game),
+  getEditorLog: () => gameToTenhou(realGame()),
   // Keep the shared round bar's highlight in sync when the replayer changes round.
   onRoundChange: () => { if (mode === 'replay') renderRoundBar(); },
   // A log loaded in the replayer (paste / shared link / load-from-editor) flows
@@ -75,14 +81,13 @@ const replay = mountReplay(replayEl, {
     if (sig === syncedSig) return; // this is the log we just pushed from the editor
     syncedSig = sig;
     try {
-      state.game = tenhouToGame(log);
-      state.activeKyoku = Math.max(0, state.game.kyokus.length - 1);
       currentSaveId = null;                        // imported log isn't a save yet
-      pendingQuickEdit = false; turnState = null; carryConflicts = []; // fresh, complete log
-      // Populate the stream transcription with an editable rendering of the log.
-      // Assigning .value directly doesn't fire 'input', so state.game (the
-      // faithful decode) stays authoritative until the user actually edits.
-      state.streamText = gameToStream(state.game);
+      pendingQuickEdit = false; turnState = null;
+      const g = tenhouToGame(log);
+      // The faithful decode stays authoritative; slots are derived for editing.
+      let stream = ''; try { stream = gameToStream(g); } catch { /* keep authoritative */ }
+      adoptGame(g, stream);
+      state.activeKyoku = Math.max(0, state.game.kyokus.length - 1);
       refreshActiveRoundView();  // textarea shows just the active round
       if (mode === 'editor') renderAll();
     } catch (err) { console.warn('Could not import replay log into editor:', err); }
@@ -92,7 +97,7 @@ replayEl.style.display = 'none';
 
 /** Push the editor's current game into the replayer, unless it already has it. */
 function syncReplayFromEditor() {
-  const log = gameToTenhou(state.game);
+  const log = gameToTenhou(realGame());
   const sig = JSON.stringify(log);
   if (sig === syncedSig) return; // replayer already shows this game
   syncedSig = sig;
@@ -158,7 +163,7 @@ function populateQuickFields() {
   uraField.value = tilesToNotation(k.uraIndicators);
   // Haipai fields mirror what was *recorded* (from the raw stream), not the tiles
   // the parser backfilled from later play — so they don't fill themselves in.
-  const recorded = readHaipai(state.streamText, state.activeKyoku);
+  const recorded = readHaipai(activeSlotText(), 0);
   for (let s = 0; s < 4; s++) {
     const p = k.players[(k.round + s) % 4];
     haipaiFields[s].value = recorded[s];
@@ -171,34 +176,56 @@ const quickFieldValues = () => ({ dora: doraField.value, ura: uraField.value, ha
 const isRoundTok = (t: string) => /^[eswn][1-4]([._\-][0-9]+){0,2}$/i.test(t);
 const hasRoundFor = (text: string, idx: number) => text.split(/[\s,]+/).filter(isRoundTok).length > idx;
 
-/** Adopt a game produced by parsing the stream, keeping the UI-only meta the
- *  DSL doesn't encode — the game title and the aka rule flag. Without this every
- *  reparse would reset the title to the parser's placeholder ("Transcribed"). */
-function adoptParsed(game: Game) {
-  game.meta.title = state.game.meta.title;
-  game.meta.rule = state.game.meta.rule;
+// ---- per-round slots ⇄ game model ----
+
+/** The canonical whole-game DSL: the non-empty round slots joined. */
+function fullStream(): string { return state.roundTexts.map((t) => t.trim()).filter(Boolean).join('\n'); }
+
+/** The game with placeholder (tokenless, WIP) rounds dropped — for output. */
+function realGame(): Game { return { ...state.game, kyokus: state.game.kyokus.filter((_, i) => !slotPlaceholder[i]) }; }
+
+/** The active slot's text (what the textarea shows/edits). */
+const activeSlotText = () => state.roundTexts[state.activeKyoku] ?? '';
+
+/** Split a whole-game stream into one text slot per round. */
+function setRoundTextsFromStream(stream: string) {
+  const regions = roundRegions(stream);
+  state.roundTexts = regions.length
+    ? regions.map((r) => stream.slice(r.start, r.end).trim())
+    : (stream.trim() ? [stream.trim()] : ['']);
+  slotPlaceholder = state.roundTexts.map(() => false);
+}
+
+/** Carry-over + game-level names + activeKyoku clamp, after the model changes. */
+function finalizeModel() {
+  carryConflicts = state.game.kyokus.length ? applyCarryOver(state.game) : [];
+  const firstReal = slotPlaceholder.findIndex((p) => !p);
+  if (firstReal >= 0) state.game.meta.names = state.game.kyokus[firstReal].players.map((p) => p.name) as Game['meta']['names'];
+  if (state.activeKyoku >= state.game.kyokus.length) state.activeKyoku = Math.max(0, state.game.kyokus.length - 1);
+}
+
+/** Rebuild every kyoku from its slot's text, keeping the model 1:1 with the
+ *  slots (a tokenless slot becomes a placeholder so its tab persists). */
+function rebuildFromSlots() {
+  const kyokus: Kyoku[] = [];
+  slotPlaceholder = [];
+  state.roundTexts.forEach((text, i) => {
+    const r = parseStream(text);
+    if (r.game.kyokus.length) { kyokus.push(r.game.kyokus[0]); slotPlaceholder.push(false); }
+    else { kyokus.push(emptyKyoku(i)); slotPlaceholder.push(true); } // WIP slot keeps its tab
+  });
+  // Keep the UI-only meta the DSL doesn't encode (title, aka rule flag).
+  state.game = { meta: { ...state.game.meta }, kyokus };
+  finalizeModel();
+}
+
+/** Adopt an authoritative game (import / load) as the model, deriving one text
+ *  slot per round without reparsing — so a faithful decode isn't lost. */
+function adoptGame(game: Game, stream: string) {
   state.game = game;
-}
-
-// ---- single-round textarea view ----
-// The textarea edits one round at a time. state.streamText stays the whole
-// game; these map between it and the visible round.
-
-/** The active round's slice of the full stream (empty if it has no round yet). */
-function activeRoundText(): string {
-  const regions = roundRegions(state.streamText);
-  if (!regions.length) return state.streamText.trim();
-  const r = regions[state.activeKyoku];
-  return r ? state.streamText.slice(r.start, r.end).trim() : '';
-}
-
-/** Fold the textarea (one round) back into the full multi-round stream. */
-function spliceActiveRoundFromTextarea() {
-  const regions = roundRegions(state.streamText);
-  const texts = regions.map((r) => state.streamText.slice(r.start, r.end).trim());
-  while (texts.length <= state.activeKyoku) texts.push('');
-  texts[state.activeKyoku] = streamInput.value;
-  state.streamText = texts.join('\n').trim();
+  setRoundTextsFromStream(stream);
+  if (state.game.kyokus.length !== state.roundTexts.length) { rebuildFromSlots(); return; }
+  finalizeModel();
 }
 
 /** Carry-over conflicts for the active round, as textarea-anchored warnings. */
@@ -209,33 +236,50 @@ function conflictDiags(): Diagnostic[] {
     .map((c) => ({ severity: 'warn' as const, message: c.message, start: 0, end }));
 }
 
-/** Point the textarea at the active round and refresh its diagnostics/turn (used
- *  when the active round changes without the user typing). */
-function refreshActiveRoundView() {
-  streamInput.value = activeRoundText();
-  const r = parseStream(streamInput.value);
+/** Diagnostics + turn indicator for the visible round, offsets matching the
+ *  textarea. Call after the active slot's text or the model changes. */
+function renderActiveDiagnostics() {
+  const r = parseStream(activeSlotText());
   turnState = r.pending ?? null;
   renderDiagnostics([...r.diagnostics, ...conflictDiags()], r.missing);
   renderTurnIndicator();
 }
 
-/** A quick-field edit: splice the new dora / ura / names / haipai into the stream. */
+/** Point the textarea at the active round and refresh its diagnostics/turn (used
+ *  when the active round changes without the user typing). */
+function refreshActiveRoundView() {
+  streamInput.value = activeSlotText();
+  renderActiveDiagnostics();
+}
+
+/** A user edit to the active round's textarea: store it, rebuild, re-render. */
+function onActiveRoundEdited() {
+  rebuildFromSlots();
+  // Flush a quick-edit that couldn't anchor until the round token was typed.
+  if (pendingQuickEdit && hasRoundFor(activeSlotText(), 0)) {
+    const spliced = spliceRoundHeader(activeSlotText(), 0, quickFieldValues());
+    if (spliced !== activeSlotText()) { state.roundTexts[state.activeKyoku] = spliced; streamInput.value = spliced; rebuildFromSlots(); }
+    pendingQuickEdit = false;
+  }
+  renderRoundBar(); renderForm(); renderBoardPanel(); renderJson();
+  renderActiveDiagnostics();
+  populateQuickFields();
+}
+
+/** A quick-field edit: splice the new dora / ura / names / haipai into the active
+ *  round (each slot is a single round, so it anchors at index 0). */
 function onQuickEdit() {
   const edit = quickFieldValues();
-  if (!hasRoundFor(state.streamText, state.activeKyoku)) {
+  if (!hasRoundFor(activeSlotText(), 0)) {
     pendingQuickEdit = !!(edit.dora || edit.ura || edit.haipai.some(Boolean) || edit.names.some(Boolean) || edit.scores.some((s) => s && s !== '25000'));
-    return; // no round yet — keep the field values and wait for it
+    return; // no round token yet — keep the field values and wait for it
   }
   pendingQuickEdit = false;
-  const text = spliceRoundHeader(state.streamText, state.activeKyoku, edit);
-  state.streamText = text;
-  const idx = state.activeKyoku;
-  const { game } = parseStream(text);
-  if (game.kyokus.length) { carryConflicts = applyCarryOver(game); adoptParsed(game); state.activeKyoku = Math.min(idx, game.kyokus.length - 1); }
-  streamInput.value = activeRoundText();  // the splice may have rewritten the round
-  const active = parseStream(streamInput.value);
-  turnState = active.pending ?? null;
-  renderForm(); renderBoardPanel(); renderJson(); renderDiagnostics([...active.diagnostics, ...conflictDiags()], active.missing); renderTurnIndicator();
+  state.roundTexts[state.activeKyoku] = spliceRoundHeader(activeSlotText(), 0, edit);
+  streamInput.value = activeSlotText();
+  rebuildFromSlots();
+  renderForm(); renderBoardPanel(); renderJson();
+  renderActiveDiagnostics();
 }
 [doraField, uraField, ...nameFields, ...scoreFields, ...haipaiFields].forEach((f) => f.addEventListener('input', onQuickEdit));
 
@@ -262,7 +306,11 @@ panelsEl.append(
   panel('tenhou/6 JSON', 'json', jsonBody, { collapsed: true }),
 );
 
-streamInput.addEventListener('input', () => { spliceActiveRoundFromTextarea(); parseStreamText(); });
+streamInput.addEventListener('input', () => {
+  while (state.roundTexts.length <= state.activeKyoku) state.roundTexts.push('');
+  state.roundTexts[state.activeKyoku] = streamInput.value; // edits the active slot only
+  onActiveRoundEdited();
+});
 
 // ---- rendering ----
 function renderToolbar() {
@@ -301,36 +349,26 @@ function selectRound(i: number) {
   else { state.activeKyoku = i; refreshActiveRoundView(); renderAll(); }
 }
 
-/** New Round: append a blank round token to the stream and open it in the editor
- *  (a blank round is for transcribing). No paste screen — use Import for logs. */
+/** New Round: append a fresh round slot (its token defaulted to the next round)
+ *  and open it for transcribing. No paste screen — use Import for logs. */
 function newRound() {
-  const ks = state.game.kyokus;
-  const next = ks.length ? Math.min(15, ks[ks.length - 1].round + 1) : 0;
+  const real = realGame().kyokus;                       // ignore any WIP placeholder slots
+  const next = real.length ? Math.min(15, real[real.length - 1].round + 1) : 0;
   const tok = `${['e', 's', 'w', 'n'][Math.floor(next / 4)]}${(next % 4) + 1}`;
-  // The stream can lag the model — notably on a fresh load, where the default
-  // East 1 lives only in the model and the textarea is still empty. Re-derive
-  // the stream from the model first so existing rounds survive the append
-  // (otherwise the new token would become the *only* round).
-  const streamRounds = state.streamText.split(/[\s,]+/).filter(isRoundTok).length;
-  let base = state.streamText.trimEnd();
-  // Collapse the runs of spaces left by empty haipai placeholders (per line).
-  if (streamRounds < ks.length) { try { base = gameToStream(state.game).replace(/[^\S\n]+/g, ' ').trimEnd(); } catch { /* keep text */ } }
-  state.streamText = `${base} ${tok}`.trim();
-  const r = parseStream(state.streamText);
-  if (r.game.kyokus.length) { carryConflicts = applyCarryOver(r.game); adoptParsed(r.game); }
-  state.activeKyoku = Math.max(0, state.game.kyokus.length - 1); // focus the new round
-  refreshActiveRoundView();          // textarea shows just the new (blank) round
+  state.roundTexts.push(tok);
+  rebuildFromSlots();
+  state.activeKyoku = state.roundTexts.length - 1;       // focus the new round
+  refreshActiveRoundView();                              // textarea shows just the new round
   if (mode !== 'editor') setMode('editor'); else renderAll();
 }
 
 function deleteRound(i: number, label: string) {
-  if (state.game.kyokus.length <= 1) return;
+  if (state.roundTexts.length <= 1) return;
   if (!confirm(`Delete ${label}? This edits the game across all views.`)) return;
-  state.game.kyokus.splice(i, 1);
+  state.roundTexts.splice(i, 1);
   if (state.activeKyoku > i) state.activeKyoku -= 1;
-  state.activeKyoku = Math.max(0, Math.min(state.activeKyoku, state.game.kyokus.length - 1));
-  // The stream text is now stale vs the model; re-derive it so both agree.
-  try { state.streamText = gameToStream(state.game); } catch { /* keep old text */ }
+  state.activeKyoku = Math.max(0, Math.min(state.activeKyoku, state.roundTexts.length - 1));
+  rebuildFromSlots();
   refreshActiveRoundView();
   if (mode === 'replay') syncReplayFromEditor();
   renderAll();
@@ -354,9 +392,9 @@ function renderRoundBar() {
 // Export scope: the whole game, or just the active round.
 type Scope = 'round' | 'game';
 function gameForScope(scope: Scope): Game {
-  if (scope === 'game') return state.game;
+  if (scope === 'game') return realGame();
   const k = state.game.kyokus[state.activeKyoku];
-  return { ...state.game, kyokus: k ? [k] : [] };
+  return { ...state.game, kyokus: k && !slotPlaceholder[state.activeKyoku] ? [k] : [] };
 }
 const roundLabel = (k?: { round: number; honba: number }) => (k ? `${roundName(k.round)}${k.honba ? `-${k.honba}` : ''}` : 'round');
 
@@ -367,7 +405,7 @@ const buildLog = (scope: Scope = 'game') => gameToTenhou(tenhouCompatible(gameFo
 function renderJson() {
   clear(jsonBody);
   const head = el('div', { class: 'json-head' }, [
-    el('span', {}, [`${state.game.kyokus.length} kyoku`]),
+    el('span', {}, [`${realGame().kyokus.length} kyoku`]),
     el('button', { class: 'btn small has-icon', onClick: () => copyJson('game') }, [icon('content_copy'), 'Copy']),
   ]);
   jsonBody.append(head, el('pre', { class: 'json' }, [JSON.stringify(buildLog('game'), null, 1)]));
@@ -380,7 +418,7 @@ function renderAll() { renderToolbar(); renderRoundBar(); syncTitleInput(); rend
 
 function renderDiagnostics(diags: Diagnostic[], missing: number) {
   clear(diagEl);
-  if (!diags.length) { diagEl.append(el('span', { class: 'diag-ok' }, [state.streamText.trim() ? '✓ no issues' : ''])); return; }
+  if (!diags.length) { diagEl.append(el('span', { class: 'diag-ok' }, [streamInput.value.trim() ? '✓ no issues' : ''])); return; }
   const errs = diags.filter((d) => d.severity === 'error').length;
   const warns = diags.filter((d) => d.severity === 'warn').length;
   diagEl.append(el('div', { class: 'diag-summary' }, [`${errs} error${errs === 1 ? '' : 's'}, ${warns} warning${warns === 1 ? '' : 's'}${missing ? `, ${missing} missed (?)` : ''}`]));
@@ -393,44 +431,15 @@ function renderDiagnostics(diags: Diagnostic[], missing: number) {
   diagEl.append(list);
 }
 
-function parseStreamText() {
-  // The model comes from the whole game (all rounds) so carry-over can run.
-  const full = parseStream(state.streamText);
-  if (full.game.kyokus.length) {
-    carryConflicts = applyCarryOver(full.game);
-    adoptParsed(full.game);
-    state.activeKyoku = Math.min(state.activeKyoku, full.game.kyokus.length - 1);
-  } else { carryConflicts = []; }
-  // Flush a quick-edit that couldn't anchor earlier, now that a round exists.
-  if (pendingQuickEdit && hasRoundFor(state.streamText, state.activeKyoku)) {
-    const text = spliceRoundHeader(state.streamText, state.activeKyoku, quickFieldValues());
-    if (text !== state.streamText) {
-      state.streamText = text;
-      const r = parseStream(text);
-      if (r.game.kyokus.length) { carryConflicts = applyCarryOver(r.game); adoptParsed(r.game); }
-      streamInput.value = activeRoundText(); // the header splice changed the active round
-    }
-    pendingQuickEdit = false;
-  }
-  // Diagnostics + turn indicator reflect only the visible (active) round, so
-  // their offsets line up with the single-round textarea.
-  const active = parseStream(streamInput.value);
-  turnState = active.pending ?? null;
-  renderRoundBar(); renderForm(); renderBoardPanel(); renderJson();
-  renderDiagnostics([...active.diagnostics, ...conflictDiags()], active.missing);
-  populateQuickFields();
-  renderTurnIndicator();
-}
-
 // ---- import / export ----
 
 /** Adopt an imported game: update the model, refresh the editable stream, render. */
 function loadGame(game: Game) {
-  state.game = game;
-  state.activeKyoku = 0;
   currentSaveId = null;   // a freshly imported game isn't linked to a save yet
-  pendingQuickEdit = false; turnState = null; carryConflicts = [];
-  try { state.streamText = gameToStream(game); } catch { state.streamText = ''; }
+  pendingQuickEdit = false; turnState = null;
+  let stream = ''; try { stream = gameToStream(game); } catch { /* keep authoritative */ }
+  adoptGame(game, stream);   // model stays authoritative; slots derived from the stream
+  state.activeKyoku = 0;
   refreshActiveRoundView();
   renderAll();
 }
@@ -448,7 +457,7 @@ function quickSave() {
       state.game.meta.title[0] = name.trim();
       syncTitleInput(); renderBoardPanel(); renderJson(); // the save name is the game title
     }
-    const rec = makeSave(state.game, state.streamText, { id: currentSaveId ?? undefined });
+    const rec = makeSave(realGame(), fullStream(), { id: currentSaveId ?? undefined });
     writeSave(rec);
     currentSaveId = rec.id;
     flash(`Saved “${rec.title}”`);
@@ -460,11 +469,10 @@ function quickSave() {
 function loadSave(id: string) {
   const rec = readSave(id);
   if (!rec) { alert('That save could not be read.'); return; }
-  state.game = rec.game;
-  state.activeKyoku = 0;
   currentSaveId = rec.id;
-  pendingQuickEdit = false; turnState = null; carryConflicts = [];
-  state.streamText = rec.stream;
+  pendingQuickEdit = false; turnState = null;
+  adoptGame(rec.game, rec.stream);  // model authoritative; slots from the saved stream
+  state.activeKyoku = 0;
   refreshActiveRoundView();
   if (mode === 'replay') syncReplayFromEditor();
   renderAll();
@@ -544,14 +552,15 @@ function importRound(game: Game, targetRound: number) {
   const k = game.kyokus[0];
   if (!k) { alert('No round found in that log.'); return; }
   k.round = targetRound;
-  const kyokus = [...state.game.kyokus];
+  const kyokus = [...realGame().kyokus];   // drop any WIP placeholder slots
   const at = kyokus.findIndex((x) => x.round === targetRound);
   if (at >= 0) kyokus[at] = k; else kyokus.push(k);
   kyokus.sort((a, b) => a.round - b.round || a.honba - b.honba);
-  state.game = { ...state.game, kyokus };
+  const merged: Game = { ...state.game, kyokus };
+  pendingQuickEdit = false; turnState = null;
+  let stream = ''; try { stream = gameToStream(merged); } catch { /* keep authoritative */ }
+  adoptGame(merged, stream);
   state.activeKyoku = Math.max(0, kyokus.indexOf(k));
-  pendingQuickEdit = false; turnState = null; carryConflicts = [];
-  try { state.streamText = gameToStream(state.game); } catch { /* keep old text */ }
   refreshActiveRoundView();
   renderAll();
 }
@@ -622,13 +631,14 @@ function openImportDialog() {
 }
 
 function openExportDialog() {
-  const warning = hasNonTenhouTiles(state.game)
+  const warning = hasNonTenhouTiles(realGame())
     ? [el('div', { class: 'dialog-warning' }, [icon('warning'), el('span', {}, ['This record has aka dora on non-five tiles, which tenhou’s format can’t represent. They export as plain tiles in the Tenhou JSON and viewer — the PDF and PaifuPlus share links keep them.'])])]
     : [];
   // Scope selector: export just the active round or the whole game.
-  let scope: Scope = state.game.kyokus.length > 1 ? 'game' : 'round';
+  const roundCount = realGame().kyokus.length;
+  let scope: Scope = roundCount > 1 ? 'game' : 'round';
   const segRound = el('button', { class: 'btn seg', onClick: () => setScope('round') }, [`This round (${roundLabel(state.game.kyokus[state.activeKyoku])})`]);
-  const segGame = el('button', { class: 'btn seg', onClick: () => setScope('game') }, [`Full game (${state.game.kyokus.length} rounds)`]);
+  const segGame = el('button', { class: 'btn seg', onClick: () => setScope('game') }, [`Full game (${roundCount} rounds)`]);
   const setScope = (s: Scope) => { scope = s; segRound.classList.toggle('primary', s === 'round'); segGame.classList.toggle('primary', s === 'game'); };
   setScope(scope);
   openDialog({
@@ -680,6 +690,7 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 function flash(msg: string) { const f = el('div', { class: 'flash' }, [msg]); document.body.append(f); setTimeout(() => f.remove(), 1600); }
 
+refreshActiveRoundView();  // textarea + diagnostics for the initial (empty) round
 renderAll();
 
 // A shared link (#replay=...) opens straight into the replayer.
