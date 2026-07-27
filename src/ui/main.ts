@@ -360,6 +360,7 @@ function renderToolbar() {
       el('button', { class: `btn has-icon${mode === 'replay' ? ' primary' : ''}`, onClick: () => setMode('replay') }, [icon('play_circle'), 'Replay']),
     ]),
     el('span', { class: 'spacer' }),
+    el('button', { class: 'btn has-icon', onClick: newRecord, title: 'Start a new blank record' }, [icon('note_add'), 'New']),
     el('button', { class: 'btn has-icon', onClick: quickSave, title: 'Save this game in your browser' }, [icon('save'), 'Save']),
     el('button', { class: 'btn has-icon', onClick: openSavesDialog, title: 'Open a saved game' }, [icon('folder_open'), 'Open']),
     el('button', { class: 'btn has-icon', onClick: openImportDialog }, [icon('upload_file'), 'Import']),
@@ -490,6 +491,21 @@ function loadGame(game: Game) {
   state.activeKyoku = 0;
   refreshActiveRoundView();
   renderAll();
+}
+
+/** Start over with a blank record — the same clean slate as a fresh page load. */
+function newRecord() {
+  if (fullStream().trim() && !confirm('Start a new record? Unsaved changes to the current one will be lost.')) return;
+  state.game = newGame();
+  state.roundTexts = [''];        // one empty East 1 slot
+  slotPlaceholder = [false];
+  state.activeKyoku = 0;
+  currentSaveId = null;           // not linked to any saved game
+  pendingQuickEdit = false; turnState = null; carryConflicts = [];
+  if (mode !== 'editor') setMode('editor');
+  refreshActiveRoundView();
+  renderAll();
+  flash('Started a new record');
 }
 
 // ---- local save / load (localStorage) ----
