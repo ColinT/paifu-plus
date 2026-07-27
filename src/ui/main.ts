@@ -194,7 +194,7 @@ const titleInput = el('input', {
   class: 'game-title-in', spellcheck: 'false', placeholder: 'Untitled game', 'aria-label': 'Game title',
   onInput: (e: Event) => { state.game.meta.title[0] = (e.target as HTMLInputElement).value; renderBoardPanel(); renderJson(); },
 }) as HTMLInputElement;
-const titleBar = el('div', { class: 'game-title-bar' }, [el('span', { class: 'game-title-lbl' }, ['Game']), titleInput]);
+const titleBar = el('div', { class: 'game-title-bar' }, [titleInput]);
 const syncTitleInput = () => { titleInput.value = state.game.meta.title[0] ?? ''; };
 
 panelsEl.append(
