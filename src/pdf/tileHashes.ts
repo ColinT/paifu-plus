@@ -23,21 +23,24 @@ export const ARROW_HASH = '72f6445067'; // ↓ tsumogiri marker (in ツモ rows)
 // blank-framed tile — NOT a spacer. It maps to 45 in PORTRAIT_TILE below.
 
 /**
- * AKA (red five) note: two distinct 5m glyphs exist (伍萬 `f57dd0196d`,
- * 五萬 `7fc3a99459`); 5p/5s each have a single red-centre image. Whether this
- * ruleset uses red fives is unconfirmed (最高位戦 classical rules often do not),
- * so BOTH 5m map to plain 15 and 5p/5s map to plain 25/35. If aka is in play,
- * remap one 5m glyph to 51 and set rule.aka=1.
+ * AKA (red five) note: 5m is `f57dd0196d` (伍萬). The original table also listed
+ * `7fc3a99459` as a second 5m glyph, but ground truth (South 344589m…) shows it
+ * is actually 三萬 = 3m — the 三/五 strokes were misread. 5p/5s each have a single
+ * red-centre image. Whether this ruleset uses red fives is unconfirmed (最高位戦
+ * classical rules often do not), so 5m/5p/5s map to plain 15/25/35; if aka is in
+ * play, remap the aka glyph to 51/52/53 and set rule.aka=1.
  */
 export const PORTRAIT_TILE: Record<string, TenhouTile> = {
-  // man
-  '5d027c18d8': 11, '330858f1f8': 12, 'ddc9df43bb': 13, 'f4e77c078c': 14,
-  'f57dd0196d': 15, '7fc3a99459': 15, '19481ddc8a': 16, 'e398c082b1': 17,
+  // man — 7fc3a99459 is 3m (was mis-mapped to 5m); confirmed against South 344589m.
+  '5d027c18d8': 11, '330858f1f8': 12, 'ddc9df43bb': 13, '7fc3a99459': 13, 'f4e77c078c': 14,
+  'f57dd0196d': 15, '19481ddc8a': 16, 'e398c082b1': 17,
   '29f63b7bad': 18, '97334621e1': 19,
-  // pin
+  // pin — 6p/8p/9p were mutually swapped in the original table; corrected against
+  // ground truth (East 88m78899p…, South …126p…): 6p=58c1e321c9, 8p=5ace38e2ee,
+  // 9p=2ef6d6f3c1.
   '4a72cf9698': 21, '44049c411f': 22, '6bb997486b': 23, 'c375c84202': 24,
-  '20bebe2b52': 25, '2ef6d6f3c1': 26, '0b116e2f56': 27, '58c1e321c9': 28,
-  '5ace38e2ee': 29,
+  '20bebe2b52': 25, '58c1e321c9': 26, '0b116e2f56': 27, '5ace38e2ee': 28,
+  '2ef6d6f3c1': 29,
   // sou
   'dc1046fb00': 31, '39744bbbbc': 32, '76227a4ace': 33, '9472c85b35': 34,
   '2f69759175': 35, 'bf842de9c2': 36, 'd47e660b2f': 37, '20d8a4cc2c': 38,
