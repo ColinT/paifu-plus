@@ -30,15 +30,15 @@ export const ARROW_HASH = '72f6445067'; // ↓ tsumogiri marker (in ツモ rows)
  * play, remap the aka glyph to 51/52/53 and set rule.aka=1.
  */
 export const PORTRAIT_TILE: Record<string, TenhouTile> = {
-  // man — 7fc3a99459 is 3m (was mis-mapped to 5m); confirmed against South 344589m.
-  '5d027c18d8': 11, '330858f1f8': 12, 'ddc9df43bb': 13, '7fc3a99459': 13, 'f4e77c078c': 14,
+  // man — 7fc3a99459 is 3m (confirmed South 344589m); the table's other "3m"
+  // (ddc9df43bb) is actually 3p (see pin) — so 3m has a single hash.
+  '5d027c18d8': 11, '330858f1f8': 12, '7fc3a99459': 13, 'f4e77c078c': 14,
   'f57dd0196d': 15, '19481ddc8a': 16, 'e398c082b1': 17,
   '29f63b7bad': 18, '97334621e1': 19,
-  // pin — 6p/8p/9p were mutually swapped in the original table; corrected against
-  // ground truth (East 88m78899p…, South …126p…): 6p=58c1e321c9, 8p=5ace38e2ee,
-  // 9p=2ef6d6f3c1. 3p has no confirmed hash in the samples (6bb997486b, formerly
-  // 3p, is actually 9s — see sou).
-  '4a72cf9698': 21, '44049c411f': 22, 'c375c84202': 24,
+  // pin — 6p/8p/9p were mutually swapped, and 3p (ddc9df43bb, formerly mis-mapped
+  // to 3m) is confirmed via South's final draw. Ground truth: 3p=ddc9df43bb,
+  // 6p=58c1e321c9, 8p=5ace38e2ee, 9p=2ef6d6f3c1.
+  '4a72cf9698': 21, '44049c411f': 22, 'ddc9df43bb': 23, 'c375c84202': 24,
   '20bebe2b52': 25, '58c1e321c9': 26, '0b116e2f56': 27, '5ace38e2ee': 28,
   '2ef6d6f3c1': 29,
   // sou — 7s/8s/9s were all mis-mapped (and 6bb997486b, formerly 3p, is 7s);
