@@ -63,7 +63,15 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
   // Round navigation lives in the shared round bar (main.ts); loading logs goes
   // through the toolbar Import. So the replay screen is just board + controls.
   const boardEl = el('div', { class: 'board-wrap' });
-  const controls = el('div', { class: 'replay-controls' });
+  // Persistent control pieces. The slider in particular is created ONCE and only
+  // updated in place — rebuilding it on every input would drop the drag (the node
+  // being dragged would vanish), so scrubbing could only move a single step.
+  const buttonsEl = el('div', { class: 'replay-buttons' });
+  const slider = el('input', { type: 'range', min: '0', max: '0', value: '0', class: 'replay-slider' }) as HTMLInputElement;
+  slider.addEventListener('input', () => { state.step = Number(slider.value); stop(); render(); });
+  const labelEl = el('div', { class: 'replay-label' });
+  const commentsEl = el('div', { class: 'comments' });
+  const controls = el('div', { class: 'replay-controls' }, [buttonsEl, slider, labelEl, commentsEl]);
   const view = el('div', { class: 'replay-view' }, [boardEl, controls]);
 
   root.append(view);
@@ -116,7 +124,7 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
   function curKyoku(): KyokuReplay | undefined { return state.game?.kyokus[state.ky]; }
 
   function render() {
-    if (!state.game) { clear(boardEl); clear(controls); return; }
+    if (!state.game) { clear(boardEl); clear(buttonsEl); clear(labelEl); clear(commentsEl); return; }
     const k = curKyoku()!;
     state.step = Math.max(0, Math.min(state.step, k.steps.length - 1));
     renderBoardView(boardEl, stepToBoardView(state.game, k, k.steps[state.step]));
@@ -125,37 +133,36 @@ export function mountReplay(root: HTMLElement, opts: { getEditorLog: () => any; 
   }
 
   function renderControls(k: KyokuReplay) {
-    clear(controls);
-    const slider = el('input', { type: 'range', min: '0', max: String(k.steps.length - 1), value: String(state.step), class: 'replay-slider', onInput: (e: Event) => { state.step = Number((e.target as HTMLInputElement).value); stop(); render(); } });
+    // Update the persistent slider in place (never recreate it — see mountReplay).
+    slider.max = String(k.steps.length - 1);
+    slider.value = String(state.step);
     const commentCount = state.comments.filter((c) => c.ky === state.ky).length;
-    controls.append(
-      el('div', { class: 'replay-buttons' }, [
-        el('button', { class: 'btn icon', title: 'Start', onClick: () => { state.step = 0; stop(); render(); } }, [icon('first_page')]),
-        el('button', { class: 'btn icon', title: 'Previous', onClick: () => { state.step = Math.max(0, state.step - 1); stop(); render(); } }, [icon('navigate_before')]),
-        el('button', { class: 'btn primary icon', title: state.playing ? 'Pause' : 'Play', onClick: () => (state.playing ? stop() : play()) }, [icon(state.playing ? 'pause' : 'play_arrow')]),
-        el('button', { class: 'btn icon', title: 'Next', onClick: () => step(1) }, [icon('navigate_next')]),
-        el('button', { class: 'btn icon', title: 'End', onClick: () => { state.step = k.steps.length - 1; stop(); render(); } }, [icon('last_page')]),
-        el('span', { class: 'replay-count' }, [stepInput(k), ` / ${k.steps.length}`]),
-        el('span', { class: 'spacer' }),
-        el('button', { class: 'btn icon', title: 'Previous comment', onClick: () => gotoComment(-1) }, [icon('navigate_before'), icon('chat_bubble')]),
-        el('button', { class: 'btn icon', title: 'Next comment', onClick: () => gotoComment(1) }, [icon('chat_bubble'), icon('navigate_next'), ...(commentCount ? [el('span', { class: 'badge' }, [String(commentCount)])] : [])]),
-        shareDropdown(),
-      ]),
-      slider,
-      el('div', { class: 'replay-label' }, stepLabel(state.game!, k.steps[state.step])),
-      renderComments(),
+    clear(buttonsEl);
+    buttonsEl.append(
+      el('button', { class: 'btn icon', title: 'Start', onClick: () => { state.step = 0; stop(); render(); } }, [icon('first_page')]),
+      el('button', { class: 'btn icon', title: 'Previous', onClick: () => { state.step = Math.max(0, state.step - 1); stop(); render(); } }, [icon('navigate_before')]),
+      el('button', { class: 'btn primary icon', title: state.playing ? 'Pause' : 'Play', onClick: () => (state.playing ? stop() : play()) }, [icon(state.playing ? 'pause' : 'play_arrow')]),
+      el('button', { class: 'btn icon', title: 'Next', onClick: () => step(1) }, [icon('navigate_next')]),
+      el('button', { class: 'btn icon', title: 'Result', onClick: () => { state.step = k.steps.length - 1; stop(); render(); } }, [icon('flag')]),
+      el('span', { class: 'replay-count' }, [stepInput(k), ` / ${k.steps.length}`]),
+      el('span', { class: 'spacer' }),
+      el('button', { class: 'btn icon', title: 'Previous comment', onClick: () => gotoComment(-1) }, [icon('navigate_before'), icon('chat_bubble')]),
+      el('button', { class: 'btn icon', title: 'Next comment', onClick: () => gotoComment(1) }, [icon('chat_bubble'), icon('navigate_next'), ...(commentCount ? [el('span', { class: 'badge' }, [String(commentCount)])] : [])]),
+      shareDropdown(),
     );
+    clear(labelEl);
+    labelEl.append(...stepLabel(state.game!, k.steps[state.step]));
+    renderComments();
   }
 
-  function renderComments(): HTMLElement {
-    const box = el('div', { class: 'comments' });
+  function renderComments(): void {
+    clear(commentsEl);
     const here = commentsAt(state.ky, state.step);
     for (const c of here) {
-      box.append(el('div', { class: 'comment' }, [el('span', { class: 'comment-text' }, [c.text]), el('button', { class: 'mini danger', title: 'Delete', onClick: () => removeComment(c) }, ['×'])]));
+      commentsEl.append(el('div', { class: 'comment' }, [el('span', { class: 'comment-text' }, [c.text]), el('button', { class: 'mini danger', title: 'Delete', onClick: () => removeComment(c) }, ['×'])]));
     }
     const inp = el('input', { class: 'field-control comment-input', placeholder: 'Add a comment at this move…', onKeydown: (e: KeyboardEvent) => { if (e.key === 'Enter') { addComment((e.target as HTMLInputElement).value); } } }) as HTMLInputElement;
-    box.append(el('div', { class: 'comment-add' }, [inp, el('button', { class: 'btn small', onClick: () => addComment(inp.value) }, ['Add'])]));
-    return box;
+    commentsEl.append(el('div', { class: 'comment-add' }, [inp, el('button', { class: 'btn small', onClick: () => addComment(inp.value) }, ['Add'])]));
   }
 
   /** Editable step number (1-indexed); jump on Enter/blur. */
