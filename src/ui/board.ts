@@ -48,8 +48,8 @@ function compassEl(view: BoardView): HTMLElement {
       el('div', { class: 'compass-count', title: `${deposit} riichi stick(s) in deposit` }, [el('span', { class: 'pt-stick riichi' }), String(deposit)]),
     ]),
   ];
-  if (view.dora.length) row.push(el('div', { class: 'compass-dora' }, view.dora.map((t) => miniTile(indicatorToDora(t)))));
-  if (view.ura.length) row.push(el('div', { class: 'compass-ura' }, view.ura.map((t) => miniTile(indicatorToDora(t)))));
+  if (view.dora.length) row.push(el('div', { class: 'compass-dora' }, [el('span', { class: 'compass-lbl' }, ['dora']), ...view.dora.map((t) => miniTile(indicatorToDora(t)))]));
+  if (view.ura.length) row.push(el('div', { class: 'compass-ura' }, [el('span', { class: 'compass-lbl' }, ['ura']), ...view.ura.map((t) => miniTile(indicatorToDora(t)))]));
   return el('div', { class: 'compass' }, [
     ...(view.title ? [el('div', { class: 'compass-title' }, [view.title])] : []),
     el('div', { class: 'compass-row' }, row),
