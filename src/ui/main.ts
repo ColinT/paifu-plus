@@ -91,46 +91,50 @@ const diagEl = el('div', { class: 'diagnostics' });
 // live play tokens. Fields reflect the active kyoku and edit it in place.
 const WINDS = ['E', 'S', 'W', 'N'];
 const isDefaultName = (n: string) => !n || /^Player \d$/.test(n);
-const doraField = el('input', { class: 'q-in', spellcheck: 'false', placeholder: '6p / 0p', title: 'Dora indicator — the dead-wall tile (0p = red 5p)' }) as HTMLInputElement;
+const doraField = el('input', { class: 'q-in', spellcheck: 'false', placeholder: 'dora 6p', title: 'Dora indicator — the dead-wall tile (0p = red 5p)' }) as HTMLInputElement;
+const uraField = el('input', { class: 'q-in', spellcheck: 'false', placeholder: 'ura 3s', title: 'Ura-dora indicator(s), revealed under a riichi win' }) as HTMLInputElement;
+const nameFields: HTMLInputElement[] = [];
 const haipaiFields: HTMLInputElement[] = [];
-const haipaiLabels: HTMLElement[] = [];
+// First column holds the dora indicator (aligned with the name row) and the ura
+// indicator below it (aligned with the haipai row); each seat column is wind /
+// name / haipai, so the fields line up across.
 const quickRow = el('div', { class: 'stream-quick' }, [
-  el('label', { class: 'q-field' }, [el('span', { class: 'q-lbl' }, ['Dora ind.']), doraField]),
+  el('div', { class: 'q-field' }, [el('span', { class: 'q-lbl' }, ['Dora / Ura']), doraField, uraField]),
 ]);
 for (let s = 0; s < 4; s++) {
-  const lbl = el('span', { class: 'q-lbl' }, [WINDS[s]]);
+  const nameInp = el('input', { class: 'q-in q-name', spellcheck: 'false', placeholder: 'name' }) as HTMLInputElement;
   const inp = el('input', { class: 'q-in q-hp', spellcheck: 'false', placeholder: 'haipai' }) as HTMLInputElement;
-  haipaiLabels.push(lbl); haipaiFields.push(inp);
-  quickRow.append(el('label', { class: 'q-field' }, [lbl, inp]));
+  nameFields.push(nameInp); haipaiFields.push(inp);
+  quickRow.append(el('div', { class: 'q-field' }, [el('span', { class: 'q-lbl' }, [WINDS[s]]), nameInp, inp]));
 }
 const streamBody = el('div', { class: 'stream-panel' }, [quickRow, streamInput, diagEl]);
 
-/** Mirror the active kyoku's dora + haipai into the quick-edit fields. */
+/** Mirror the active kyoku's dora, names and haipai into the quick-edit fields. */
 function populateQuickFields() {
   const k = state.game.kyokus[state.activeKyoku];
-  if (!k) { doraField.value = ''; haipaiFields.forEach((f) => (f.value = '')); return; }
+  if (!k) { doraField.value = ''; uraField.value = ''; nameFields.forEach((f) => (f.value = '')); haipaiFields.forEach((f) => (f.value = '')); return; }
   doraField.value = tilesToNotation(k.doraIndicators);
+  uraField.value = tilesToNotation(k.uraIndicators);
   for (let s = 0; s < 4; s++) {
     const p = k.players[(k.round + s) % 4];
     const tiles = s === 0 && p.turns[0]?.draw !== undefined ? [...p.haipai, p.turns[0].draw] : p.haipai;
     haipaiFields[s].value = tilesToNotation(tiles);
-    haipaiLabels[s].textContent = isDefaultName(p.name) ? WINDS[s] : `${WINDS[s]} ${p.name}`;
+    nameFields[s].value = isDefaultName(p.name) ? '' : p.name;
   }
 }
 
-/** A quick-field edit: splice the new dora/haipai into the raw stream in place. */
+/** A quick-field edit: splice the new dora / names / haipai into the raw stream. */
 function onQuickEdit() {
-  const k = state.game.kyokus[state.activeKyoku];
-  const names = [0, 1, 2, 3].map((s) => { const p = k?.players[(k.round + s) % 4]; return p && !isDefaultName(p.name) ? p.name : ''; });
-  const text = spliceRoundHeader(state.streamText, state.activeKyoku, { dora: doraField.value, haipai: haipaiFields.map((f) => f.value), names });
+  const text = spliceRoundHeader(state.streamText, state.activeKyoku, {
+    dora: doraField.value, ura: uraField.value, haipai: haipaiFields.map((f) => f.value), names: nameFields.map((f) => f.value),
+  });
   state.streamText = text; streamInput.value = text;
   const idx = state.activeKyoku;
   const { game, diagnostics, missing } = parseStream(text);
   if (game.kyokus.length) { state.game = game; state.activeKyoku = Math.min(idx, game.kyokus.length - 1); }
   renderForm(); renderBoardPanel(); renderJson(); renderDiagnostics(diagnostics, missing);
 }
-doraField.addEventListener('input', onQuickEdit);
-haipaiFields.forEach((f) => f.addEventListener('input', onQuickEdit));
+[doraField, uraField, ...nameFields, ...haipaiFields].forEach((f) => f.addEventListener('input', onQuickEdit));
 
 // board / form / json bodies
 const boardBody = el('div', { class: 'board-wrap' });

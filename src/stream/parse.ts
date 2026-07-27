@@ -339,7 +339,8 @@ export function parseStream(input: string): StreamParseResult {
     if (isPhase('haipai')) {
       const advance = () => { pendingName = ''; haipaiSeat++; if (haipaiSeat === 4) { phase = 'play'; turn = 0; expect = 'discard'; midTurnSeat = 0; } };
       // '?' skips this seat's haipai (unknown — reconstructed later from calls).
-      if (t === '?') { missing++; warn(tok, `${['E', 'S', 'W', 'N'][haipaiSeat]} haipai skipped`, 'info'); advance(); continue; }
+      // A name typed just before it (e.g. "Okada ?") still names the seat.
+      if (t === '?') { missing++; if (pendingName) players![haipaiSeat].name = pendingName; warn(tok, `${['E', 'S', 'W', 'N'][haipaiSeat]} haipai skipped`, 'info'); advance(); continue; }
       // A player name may be attached as "name:tiles" or as a separate token
       // before the haipai (e.g. "Okada 996p...").
       const colon = t.indexOf(':');

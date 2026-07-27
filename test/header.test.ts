@@ -3,7 +3,7 @@ import { spliceRoundHeader } from '../src/stream/header.js';
 import { parseStream } from '../src/stream/parse.js';
 
 describe('spliceRoundHeader', () => {
-  const blank = { dora: '', haipai: ['', '', '', ''], names: ['', '', '', ''] };
+  const blank = { dora: '', ura: '', haipai: ['', '', '', ''], names: ['', '', '', ''] };
 
   it('fills haipai placeholders while keeping the round token and plays', () => {
     const out = spliceRoundHeader('e1 ? ? ? ? 1z 9p 8p ryuukyoku', 0, {
@@ -21,6 +21,20 @@ describe('spliceRoundHeader', () => {
     const b = spliceRoundHeader('e1 d5m ? ? ? ? 1z', 0, { ...blank, dora: '6p' });
     expect(b).toBe('e1 di6p ? ? ? ? 1z');
     expect(parseStream(a).game.kyokus[0].doraIndicators).toEqual([52]); // red-five 5p indicator
+  });
+
+  it('adds a ura indicator and consolidates a trailing ura into the header', () => {
+    // A serialized stream carries ura at the end; editing it must not duplicate.
+    const out = spliceRoundHeader('e1 d5m ? ? ? ? 1z u3p ryuukyoku', 0, { ...blank, dora: '4m', ura: '2p' });
+    expect(out).toBe('e1 di4m ui2p ? ? ? ? 1z ryuukyoku');
+    const k = parseStream(out).game.kyokus[0];
+    expect(k.uraIndicators).toEqual([22]); // single 2p ura indicator, not doubled
+  });
+
+  it('keeps a name on a still-unknown (?) haipai', () => {
+    const out = spliceRoundHeader('e1 ? ? ? ? 1z', 0, { ...blank, names: ['Okada', '', '', ''] });
+    expect(out).toBe('e1 Okada ? ? ? ? 1z');
+    expect(parseStream(out).game.kyokus[0].players[0].name).toBe('Okada');
   });
 
   it('preserves player names via a name: prefix', () => {

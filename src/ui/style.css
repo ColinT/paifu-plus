@@ -57,11 +57,12 @@ button, input, select { font: inherit; color: inherit; }
 .comment-input:focus { outline: none; border-color: var(--accent); }
 
 .stream-panel { display: flex; flex-direction: column; gap: 8px; }
-.stream-quick { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; padding: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; }
+.stream-quick { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; padding: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; }
 .q-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); flex: 1; min-width: 96px; }
 .q-lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .q-in { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 5px 7px; color: var(--fg); font: 13px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; }
 .q-in:focus { outline: none; border-color: var(--accent); }
+.q-name { font-family: inherit; }
 .stream-input { width: 100%; min-height: 120px; resize: vertical; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; color: var(--fg); font: 14px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace; letter-spacing: .3px; }
 .stream-input:focus { outline: none; border-color: var(--accent); }
 .diagnostics { font-size: 12px; }

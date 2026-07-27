@@ -30,6 +30,8 @@ function tokenize(text: string): Tok[] {
 export interface HeaderEdit {
   /** Dora-indicator notation (dead-wall tiles), emitted as a `di…` token. Empty ⇒ no dora token. */
   dora: string;
+  /** Ura-dora-indicator notation, emitted as a `ui…` token. Empty ⇒ no ura token. */
+  ura: string;
   /** Per current-seat (E,S,W,N) haipai tile notation; '' ⇒ a `?` placeholder. */
   haipai: string[];
   /** Per current-seat player name to prefix ("name:tiles"); '' ⇒ bare tiles. */
@@ -37,21 +39,26 @@ export interface HeaderEdit {
 }
 
 /**
- * Rewrite the dora + haipai of the `kyokuIndex`-th hand in `text` from `edit`,
- * preserving the round token and all play tokens. Returns `text` unchanged if
+ * Rewrite the dora / ura / haipai of the `kyokuIndex`-th hand in `text` from
+ * `edit`, preserving the round token and every play token. Dora/ura tokens are
+ * consolidated into the header (their stream position doesn't affect parsing),
+ * so a loaded game's trailing `u…` won't duplicate. Returns `text` unchanged if
  * that hand's round token isn't present yet (nothing to anchor to).
  */
 export function spliceRoundHeader(text: string, kyokuIndex: number, edit: HeaderEdit): string {
   const tk = tokenize(text);
-  const round = tk.filter((t) => RE_ROUND.test(t.text))[kyokuIndex];
+  const rounds = tk.filter((t) => RE_ROUND.test(t.text));
+  const round = rounds[kyokuIndex];
   if (!round) return text;
   const ri = tk.indexOf(round);
+  const nextRound = rounds[kyokuIndex + 1];
+  const endTok = nextRound ? tk.indexOf(nextRound) : tk.length; // token index where this hand ends
+  const kyokuEnd = nextRound ? nextRound.start : text.length;   // char offset where this hand ends
 
   // Walk forward over the header region (dora/ura tokens + four haipai seats).
-  let seat = 0, headerEnd = round.end;
-  for (let i = ri + 1; i < tk.length && seat < 4; i++) {
-    const t = tk[i];
-    if (RE_ROUND.test(t.text)) break;                 // next kyoku begins
+  let seat = 0, headerEnd = round.end, hi = ri + 1;
+  for (; hi < endTok && seat < 4; hi++) {
+    const t = tk[hi];
     if (isDoraTok(t.text)) { headerEnd = t.end; continue; }
     if (t.text === '?') { seat++; headerEnd = t.end; continue; }
     const colon = t.text.indexOf(':');
@@ -62,10 +69,24 @@ export function spliceRoundHeader(text: string, kyokuIndex: number, edit: Header
 
   let head = '';
   if (edit.dora.trim()) head += ` di${edit.dora.trim()}`;
+  if (edit.ura.trim()) head += ` ui${edit.ura.trim()}`;
   for (let s = 0; s < 4; s++) {
     const tiles = (edit.haipai[s] || '').trim();
-    const name = (edit.names[s] || '').trim();
-    head += ' ' + (tiles ? (name ? `${name}:${tiles}` : tiles) : '?');
+    const name = (edit.names[s] || '').trim().replace(/[\s:]+/g, '_');
+    // "name:tiles" when the haipai is known; "name ?" keeps the name on a still-
+    // unknown haipai (a bare "?" otherwise), so names can be filled in first.
+    if (tiles) head += ` ${name ? `${name}:` : ''}${tiles}`;
+    else head += name ? ` ${name} ?` : ' ?';
   }
-  return text.slice(0, round.end) + head + text.slice(headerEnd);
+
+  // Play region (after the header, up to the next hand), with any stray dora/ura
+  // tokens removed — they now live in the rebuilt header.
+  let rest = text.slice(headerEnd, kyokuEnd);
+  const strays = tk.slice(hi, endTok).filter((t) => isDoraTok(t.text));
+  for (let j = strays.length - 1; j >= 0; j--) {
+    const s = strays[j].start - headerEnd, e = strays[j].end - headerEnd;
+    const cut = s > 0 && rest[s - 1] === ' ' ? s - 1 : s; // also drop one leading space
+    rest = rest.slice(0, cut) + rest.slice(e);
+  }
+  return text.slice(0, round.end) + head + rest + text.slice(kyokuEnd);
 }
