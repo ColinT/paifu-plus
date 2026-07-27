@@ -1,7 +1,9 @@
 /**
- * Browser-side PDF import: load a File/ArrayBuffer with pdfjs, extract each
- * page, and parse into Kyoku[]. Uses the pure-JS md5 so tile hashes match the
- * table built under Node.
+ * PDF reader adapter (pdfjs). Internal to the PDF layer — consume it through
+ * ../pdf (the facade), not directly, so the app stays library-agnostic.
+ *
+ * Loads a File/ArrayBuffer with pdfjs, extracts each page, and parses into
+ * Kyoku[]. Uses the pure-JS md5 so tile hashes match the table built under Node.
  */
 import { getDocument, GlobalWorkerOptions, OPS } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';

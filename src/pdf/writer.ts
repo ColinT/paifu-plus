@@ -1,5 +1,8 @@
 /**
- * Render a Game as a PAIFUN-style paifu PDF (the layout used by 最高位戦
+ * PDF writer adapter (pdf-lib). Internal to the PDF layer — consume it through
+ * ../pdf (the facade), not directly, so the app stays library-agnostic.
+ *
+ * Renders a Game as a PAIFUN-style paifu PDF (the layout used by 最高位戦
  * transcripts and tenhou): one kyoku per page, a header with the round and dora
  * indicators, then four player bands (E/S/W/N) each showing 配牌 / ツモ / 捨牌 /
  * 最終形 rows of tile images, riichi tiles laid sideways, tsumogiri marked with

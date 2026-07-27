@@ -1,6 +1,5 @@
 import './style.css';
-import { importPdf, readEmbeddedLog } from '../pdf/browser.js';
-import { gameToPaifuPdf } from '../pdf/paifu.js';
+import { importPaifuPdf, readEmbeddedLog, exportPaifuPdf } from '../pdf/index.js';
 import { gameToTenhou, tenhouCompatible, hasNonTenhouTiles } from '../core/tenhou.js';
 import { tenhouToGame } from '../core/tenhouImport.js';
 import type { Game, Kyoku } from '../core/model.js';
@@ -680,7 +679,7 @@ function openImportDialog() {
       if (/\.pdf$/i.test(f.name) || isPdfBytes(buf)) {
         const embedded = await readEmbeddedLog(buf);
         if (embedded) { apply(tenhouToGame(embedded), 'PaifuPlus PDF'); return; }
-        const { kyokus, errors } = await importPdf(buf);
+        const { kyokus, errors } = await importPaifuPdf(buf);
         if (!kyokus.length) { alert('No hands found in that PDF.'); return; }
         apply(gameFromKyokus(kyokus, f.name.replace(/\.pdf$/i, '')), 'Paifun PDF');
         if (errors.length) alert(`Imported ${kyokus.length} kyoku. ${errors.length} page(s) failed:\n` + errors.map((x) => `  p${x.page}: ${x.message}`).join('\n'));
@@ -739,7 +738,7 @@ function openInTenhou(scope: Scope = 'game') {
 
 async function exportPdf(lang: 'en' | 'ja', scope: Scope = 'game') {
   try {
-    const bytes = await gameToPaifuPdf(gameForScope(scope), lang);
+    const bytes = await exportPaifuPdf(gameForScope(scope), lang);
     const suffix = scope === 'round' ? `_${roundLabel(state.game.kyokus[state.activeKyoku])}` : '';
     downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `${baseName()}${suffix}_${lang}.pdf`);
     flash('Downloaded PDF');
