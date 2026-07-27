@@ -104,12 +104,49 @@ function syncReplayFromEditor() {
   replay.loadLog(log);
 }
 
-function panel(title: string, key: string, body: HTMLElement, opts: { collapsed?: boolean; grow?: boolean } = {}): HTMLElement {
+function panel(title: string, key: string, body: HTMLElement, opts: { collapsed?: boolean; grow?: boolean; actions?: (Node | string)[] } = {}): HTMLElement {
   const sec = el('section', { class: `panel${opts.collapsed ? ' collapsed' : ''}${opts.grow ? ' grow' : ''}`, 'data-key': key });
   const toggle = el('button', { class: 'panel-toggle', onClick: () => sec.classList.toggle('collapsed') }, []);
-  const head = el('div', { class: 'panel-head', onClick: (e: Event) => { if ((e.target as HTMLElement).closest('.panel-actions')) return; sec.classList.toggle('collapsed'); } }, [toggle, el('span', { class: 'panel-title' }, [title])]);
+  // Clicks inside .panel-actions don't toggle the panel (they run their own handler).
+  const head = el('div', { class: 'panel-head', onClick: (e: Event) => { if ((e.target as HTMLElement).closest('.panel-actions')) return; sec.classList.toggle('collapsed'); } }, [
+    toggle, el('span', { class: 'panel-title' }, [title]),
+    ...(opts.actions?.length ? [el('div', { class: 'panel-actions' }, opts.actions)] : []),
+  ]);
   sec.append(head, el('div', { class: 'panel-body' }, [body]));
   return sec;
+}
+
+/** Help dialog: the stream DSL syntax + the quick-entry fields' purpose. */
+function openStreamHelp() {
+  const row = (term: string, code: string, desc: string) => el('div', { class: 'help-row' }, [
+    el('div', { class: 'help-term' }, [term]),
+    el('div', { class: 'help-desc' }, [...(code ? [el('code', {}, [code]), ' — '] : []), desc]),
+  ]);
+  openDialog({
+    title: 'Stream transcription',
+    body: [
+      el('p', { class: 'help-lead' }, ['Transcribe a hand as a stream of space-separated tokens, in order of play:']),
+      el('pre', { class: 'help-shape' }, ['<round> [dora] <E haipai> <S> <W> <N>  <discard> ( <draw> <discard> )… <result>']),
+      el('div', { class: 'help-grid' }, [
+        row('Round', 'e1 … n4', 'Round wind + number. Append honba and riichi sticks: e1.1 or e1.1.2.'),
+        row('Dora / Ura', 'd5m · di0p · u3s', 'd = the dora tile (stored as its indicator); di = the indicator directly (needed for a red-5 indicator); u / ui = ura-dora.'),
+        row('Haipai', '123m456p77z · Alice:123m…', 'A seat’s 13 starting tiles (the dealer’s 14th is their first draw). Optionally name-prefixed; use ? to skip a seat.'),
+        row('Draw', '5m · ?', 'A drawn tile. ? marks an unknown/missed draw.'),
+        row('Discard', '3p · x · r3p', 'A discard. x = tsumogiri (throw the tile just drawn); r = the riichi declaration tile.'),
+        row('Call', 'pon · chi · kan · chi46m', 'Claim the last discard. Prefix the caller relative to the discarder: k/t/s (kamicha / toimen / shimocha), e.g. kpon. A chi can name its run — chi46m or chi456m — to pick which tiles it uses.'),
+        row('Result', 'tsumo · ron · ryuukyoku', 'How the hand ended. Prefix a seat to name the winner on a multi-ron, e.g. eron / sron.'),
+      ]),
+      el('p', { class: 'help-note muted' }, ['Nothing is thrown away on an error — problems show as diagnostics below the box and parsing continues, so a partial record still renders.']),
+      el('h4', { class: 'help-h' }, ['Quick-entry fields']),
+      el('p', { class: 'help-lead' }, ['The fields above the textarea edit the active round in place, without disturbing the live play tokens — handy for filling in details during a pause.']),
+      el('div', { class: 'help-grid' }, [
+        row('Dora / Ura Indicators', '', 'The dead-wall indicator tiles (0p = red 5). Ura is only revealed under a riichi win.'),
+        row('Name', '', 'Each seat’s player name, shown E / S / W / N for the active round. New Round carries these forward.'),
+        row('Score', '', 'Each seat’s starting points (default 25000). For later rounds this is normally carried from the previous round automatically.'),
+        row('Haipai', '', 'Each seat’s 13 starting tiles. Leave blank if you didn’t record them — the engine backfills what it can from later play.'),
+      ]),
+    ],
+  });
 }
 
 // stream panel
@@ -298,9 +335,10 @@ const titleInput = el('input', {
 const titleBar = el('div', { class: 'game-title-bar' }, [titleInput]);
 const syncTitleInput = () => { titleInput.value = state.game.meta.title[0] ?? ''; };
 
+const streamHelpBtn = el('button', { class: 'btn small icon', title: 'Transcription syntax help', onClick: (e: Event) => { e.stopPropagation(); openStreamHelp(); } }, [icon('help')]);
 panelsEl.append(
   titleBar,
-  panel('Stream transcription', 'stream', streamBody, { grow: true }),
+  panel('Stream transcription', 'stream', streamBody, { grow: true, actions: [streamHelpBtn] }),
   panel('Board', 'board', boardBody),
   panel('Form editor', 'form', formBody, { collapsed: true }),
   panel('tenhou/6 JSON', 'json', jsonBody, { collapsed: true }),
