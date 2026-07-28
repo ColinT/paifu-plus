@@ -97,51 +97,28 @@ def select_haipai(mask, n_tiles, min_long_frac=0.20):
 CELL_W, CELL_H = 44, 64  # deskewed per-tile size (tile face aspect ~ w<h)
 
 
-def _fit_line(x, y, iters=3):
-    """Least-squares line y=mx+b, re-fit on inliers to reject background outliers."""
-    m, b = np.polyfit(x, y, 1)
-    for _ in range(iters):
-        res = np.abs(y - (m * x + b))
-        keep = res <= max(4.0, 2.0 * np.median(res))
-        if keep.sum() < 3:
-            break
-        m, b = np.polyfit(x[keep], y[keep], 1)
-    return m, b
+def _order_quad(p):
+    """Order 4 points TL,TR,BR,BL (works for a row that is wider than tall)."""
+    p = np.array(p, float)
+    p = p[np.argsort(p[:, 0])]                        # by x: two left, two right
+    (tl, bl) = p[:2][np.argsort(p[:2, 1])]            # left: top, bottom
+    (tr, br) = p[2:][np.argsort(p[2:, 1])]            # right: top, bottom
+    return np.float32([tl, tr, br, bl])
 
 
 def row_quad(mask, n_tiles):
-    """4 corners (TL,TR,BR,BL) of the tile row.
+    """Best-fit quad of the tile-row component.
 
-    The BOTTOM edge is reliable (a reaching hand/arm merges into the TOP of the
-    blob, not the bottom), so we anchor on it: fit the bottom line robustly, take
-    the x-extent from its inliers (this also drops a merged nameplate whose bottom
-    sits at a different y), then derive the expected tile height from the known N
-    and the 3:4 tile aspect (height = 4/3 * width, width = row_len / N). The TOP
-    edge is fitted only over columns whose measured height is plausible (<=1.5x
-    expected) — which rejects the arm, where the top balloons upward — and we fall
-    back to a parallel edge if too little survives. Two fitted lines keep the
-    perspective (trapezoid), not just a parallelogram."""
-    xr, yt, yb = [], [], []
-    for x in range(mask.shape[1]):
-        ys = np.where(mask[:, x] > 0)[0]
-        if len(ys):
-            xr.append(x); yt.append(ys[0]); yb.append(ys[-1])
-    xr, yt, yb = np.array(xr, float), np.array(yt, float), np.array(yb, float)
-    xs, xe = float(xr.min()), float(xr.max())        # the blob IS the near-hand row
-    mb, bb = _fit_line(xr, yb)                        # bottom edge (clean, full row)
-    # Fit the TOP edge only over MID-height columns: too tall = a merged arm, too
-    # short = a tile face under-captured where residual ghost dimmed it. Excluding
-    # both and extrapolating the line recovers the true (converging) top edge.
-    h = yb - yt
-    hmed = np.median(h)
-    good = (h >= 0.6 * hmed) & (h <= 1.5 * hmed)
-    if good.sum() >= 3:
-        mt, bt = _fit_line(xr[good], yt[good])
-    else:
-        mt, bt = mb, bb - hmed                        # fallback: parallel to bottom
-    quad = np.float32([[xs, mt * xs + bt], [xe, mt * xe + bt],
-                       [xe, mb * xe + bb], [xs, mb * xs + bb]])
-    return quad, (xs, xe)
+    Fit a rotated rectangle to the component's CONVEX HULL. Unlike per-column
+    edge-line fitting, the hull's min-area rectangle has parallel, equal-length
+    sides, so the right edge can't collapse to the height the mask happens to
+    capture on the colour-glyph tiles — it stays a full tile-height. Returns
+    (quad TL,TR,BR,BL, x-extent)."""
+    pts = cv2.findNonZero(mask)
+    hull = cv2.convexHull(pts)
+    box = cv2.boxPoints(cv2.minAreaRect(hull))
+    quad = _order_quad(box)
+    return quad, (float(quad[:, 0].min()), float(quad[:, 0].max()))
 
 
 def segment_tiles(crop_bgr, n_tiles):

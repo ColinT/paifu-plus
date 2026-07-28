@@ -96,16 +96,17 @@ player to each `t`.
   (`whitish`): whiteness = `min(R,G,B)` (rejects the bluish felt and orange edge),
   CLAHE-normalized, thresholded by the brightest class of a 3-way multi-Otsu — no
   fixed 0-255 cutoffs, so shadowed tiles survive and the felt is excluded. This
-  reliably finds the near hand and its **bottom edge**; the residual issue is the
-  player's **reaching hand/arm** (skin is bright too) merging into the blob. Tried
-  reconstructing the row from the reliable bottom edge + median-height gating +
-  the 3:4 aspect (and RANSAC on the bottom): it *reduces* but does **not** solve
-  the contamination — on the full frame the arm forms its own plausible-height
-  band beside/right of the row, so the x-extent still over-reaches. Robust auto
-  isolation needs **skin removal** (subtract a YCrCb/HSV skin mask — cheap, the
-  targeted next step) or a **learned tile/row detector**. Until then `--quad`
-  (operator corners) is the reliable path. Recognition needs the `tiles/` library
-  grown via the labeling loop; seat id is `--seat` for now.
+  finds the near hand. The reaching-hand/arm contamination is removed **temporally**
+  (`--scan`): scrub a window around the operator's timestamp, and because the hand
+  MOVES while the tiles are ~static, take the per-pixel **temporal median** over the
+  low-motion frames — the hand averages out (colour-free, so robust to gloves / any
+  skin tone). The row quad is then a **convex hull + `minAreaRect`** best-fit
+  (parallel equal-length sides, so the right edge can't collapse on the
+  colour-glyph tiles 發/中 the way per-column edge-fitting did). End result on the
+  E1 dealer haipai: a clean, hand-free, full-length deskew with all **14 tiles**
+  correctly split — fully automatic. `--quad` (operator corners) remains as an
+  override. Recognition needs the `tiles/` library grown via the labeling loop;
+  seat id is `--seat` for now.
 - **Pass 3 — discards (河).** The genuinely hard one on this broadcast (no stable
   river shot): either heavy per-frame table-registration + replay de-dup, or
   human-assisted entry via deep-linked questions. Deferred pending a decision.
