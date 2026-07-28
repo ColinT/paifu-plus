@@ -88,10 +88,16 @@ player to each `t`.
   **known N** (14 dealer / 13 else) — split into N equal columns. Every cell comes
   out upright at a normalized scale, then classified via **ORB**; unknowns escalate
   as labeled crops. Corners: `--quad TL,TR,BR,BL` (operator-anchored, reliable) is
-  the recommended path — auto-detection (largest bright blob) exists but is fooled
-  by white clutter (nameplate, walls). Remaining: recognition needs the `tiles/`
-  library grown via the labeling loop (ships with just the dora ref); seat id is
-  `--seat` for now.
+  the recommended path. Auto-detection runs on the **full frame** (no crop — the
+  haipai fills much of it) and picks the haipai among bright blobs by **shape**: a
+  row of N tiles (3 wide : 4 high each) has overall aspect ~3N/4, and among
+  aspect-plausible blobs the near hand is the one with the **largest tiles**
+  (biggest short side, closest to camera). That reliably targets the near hand —
+  but the blob still **merges with adjacent white clutter** (reaching-hand area /
+  wall), corrupting the fitted top/right edge, so a robust auto version needs
+  bridge-cutting (erosion/watershed) or the orange top-edge cue or a learned
+  detector. Remaining: recognition needs the `tiles/` library grown via the
+  labeling loop (ships with just the dora ref); seat id is `--seat` for now.
 - **Pass 3 — discards (河).** The genuinely hard one on this broadcast (no stable
   river shot): either heavy per-frame table-registration + replay de-dup, or
   human-assisted entry via deep-linked questions. Deferred pending a decision.

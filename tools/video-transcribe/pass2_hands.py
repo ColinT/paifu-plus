@@ -42,14 +42,39 @@ def whitish(bgr):
     return cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), "uint8"))
 
 
-def largest_component(mask):
-    """Keep only the biggest blob — the tile row, dropping the separate white
-    sponsor logo / nameplate that also pass the whitish test."""
-    n, lab, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    if n <= 1:
-        return mask
-    biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    return ((lab == biggest).astype("uint8")) * 255
+def close_row(mask):
+    """Bridge the thin dark gaps between adjacent tiles so the row is one blob."""
+    return cv2.morphologyEx(mask, cv2.MORPH_CLOSE,
+                            cv2.getStructuringElement(cv2.MORPH_RECT, (17, 5)))
+
+
+def select_haipai(mask, n_tiles, min_long_frac=0.20):
+    """Pick the blob shaped like a haipai. A row of N tiles (each 3 wide : 4 high)
+    has overall aspect ~3N/4, so we score each component's rotated-box long/short
+    ratio against that target — a nameplate (~4:1) or logo (~1:1) won't match.
+    Returns (component_mask | None, candidates)."""
+    target = 3.0 * n_tiles / 4.0
+    ncomp, lab, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    W = mask.shape[1]
+    cand = []
+    for i in range(1, ncomp):
+        if stats[i, cv2.CC_STAT_AREA] < 0.0015 * mask.size:
+            continue
+        pts = np.column_stack(np.where(lab == i)[::-1]).astype(np.float32)
+        (_, _), (w, h), _ = cv2.minAreaRect(pts)
+        long, short = max(w, h), max(1.0, min(w, h))
+        if long < min_long_frac * W:
+            continue
+        cand.append({"id": i, "ratio": round(long / short, 1),
+                     "long": int(long), "short": int(short)})
+    # Aspect ~3N/4 alone also matches the walls, so among aspect-plausible blobs
+    # pick the one with the LARGEST tiles (short side) — the near hand is closest
+    # to the camera, so its tiles are biggest.
+    plausible = [c for c in cand if 0.6 * target <= c["ratio"] <= 1.5 * target]
+    pool = plausible or cand
+    best = max(pool, key=lambda c: c["short"]) if pool else None
+    comp = ((lab == best["id"]).astype("uint8") * 255) if best else None
+    return comp, {"target": round(target, 1), "picked": best, "candidates": cand}
 
 
 CELL_W, CELL_H = 44, 64  # deskewed per-tile size (tile face aspect ~ w<h)
@@ -94,15 +119,13 @@ def segment_tiles(crop_bgr, n_tiles):
     Warping the row's quadrilateral to a rectangle removes tilt AND perspective
     in one step, so the split is a trivial equal division and every tile crop is
     upright at a normalized scale (much friendlier to recognition)."""
-    mask = largest_component(whitish(crop_bgr))
-    if mask.max() == 0:
-        return [], mask, None, None
-    quad, _ = row_quad(mask)
-    W, H = CELL_W * n_tiles, CELL_H
-    dst = np.float32([[0, 0], [W, 0], [W, H], [0, H]])
-    warp = cv2.warpPerspective(crop_bgr, cv2.getPerspectiveTransform(quad, dst), (W, H))
-    crops = [warp[:, i * CELL_W:(i + 1) * CELL_W] for i in range(n_tiles)]
-    return crops, mask, quad, warp
+    mask = close_row(whitish(crop_bgr))
+    comp, cand = select_haipai(mask, n_tiles)
+    if comp is None:
+        return [], mask, None, None, cand
+    quad, _ = row_quad(comp)
+    crops, warp = deskew_split(crop_bgr, quad, n_tiles)
+    return crops, comp, quad, warp, cand
 
 
 def deskew_split(img, quad, n_tiles):
@@ -116,9 +139,9 @@ def deskew_split(img, quad, n_tiles):
 
 def read_hand(lib_orb, crop_bgr, n_tiles):
     """Classify each of the n_tiles deskewed cells. Returns (codes, crops, meta)."""
-    crops, mask, quad, warp = segment_tiles(crop_bgr, n_tiles)
+    crops, mask, quad, warp, cand = segment_tiles(crop_bgr, n_tiles)
     codes = [tiles.classify_orb(t, lib_orb) for t in crops]
-    return codes, crops, {"quad": quad, "warp": warp}
+    return codes, crops, {"quad": quad, "warp": warp, "cand": cand}
 
 
 def main():
@@ -167,13 +190,20 @@ def main():
         codes = [tiles.classify_orb(t, lib_orb) for t in tile_crops]
         meta = {"quad": quad, "warp": warp}
     else:
-        region = ([int(v) for v in args.region.split(",")] if args.region
-                  else cfg["regions"].get("hand_band"))
-        if not region:
-            raise SystemExit("no hand region: pass --quad, --region x,y,w,h, or add regions.hand_band")
-        R = scale_region(region, w, h, cfg["ref_width"], cfg["ref_height"])
-        hand_crop = crop(img, R)
+        # No crop by default — the haipai fills much of the frame, and a fixed box
+        # can clip it. The aspect filter finds the haipai among all bright blobs.
+        # --region is an optional manual restriction.
+        if args.region:
+            R = scale_region([int(v) for v in args.region.split(",")], w, h,
+                             cfg["ref_width"], cfg["ref_height"])
+            hand_crop = crop(img, R)
+        else:
+            hand_crop = img
         codes, tile_crops, meta = read_hand(lib_orb, hand_crop, args.count)
+        if args.debug:
+            print(f"debug: aspect target={meta['cand']['target']} picked={meta['cand']['picked']}")
+            for c in meta["cand"]["candidates"]:
+                print(f"   cand {c}")
 
     out_dir = os.path.dirname(args.out) if args.out else "out"
     unlabeled = os.path.join(out_dir, "unlabeled")
