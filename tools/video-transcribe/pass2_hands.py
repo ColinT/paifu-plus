@@ -106,18 +106,44 @@ def _order_quad(p):
     return np.float32([tl, tr, br, bl])
 
 
-def row_quad(mask, n_tiles):
-    """Best-fit quad of the tile-row component.
+def _fill_holes(m):
+    """Fill the dark character islands inside the white tile faces."""
+    ff = m.copy()
+    h, w = m.shape
+    cv2.floodFill(ff, np.zeros((h + 2, w + 2), np.uint8), (0, 0), 255)
+    return m | cv2.bitwise_not(ff)
 
-    Fit a rotated rectangle to the component's CONVEX HULL. Unlike per-column
-    edge-line fitting, the hull's min-area rectangle has parallel, equal-length
-    sides, so the right edge can't collapse to the height the mask happens to
-    capture on the colour-glyph tiles — it stays a full tile-height. Returns
-    (quad TL,TR,BR,BL, x-extent)."""
-    pts = cv2.findNonZero(mask)
-    hull = cv2.convexHull(pts)
-    box = cv2.boxPoints(cv2.minAreaRect(hull))
-    quad = _order_quad(box)
+
+def row_quad(mask, n_tiles):
+    """Reconstruct the tile row's FRONT (symbol) face as a rectangular prism seen
+    in perspective — a bounding rectangle would swallow the top and end faces.
+
+    Clean the shape (fill character holes, shave the thin inter-tile fingers),
+    then: the lowest point is the near front-bottom corner and the highest is the
+    opposite (back-top) corner. Which side the lowest sits relative to the highest
+    tells us the camera side; the near END face there gives the prism's height and
+    thickness. From those + the two opposite corners we rebuild the front face,
+    with equal-height left/right edges."""
+    m = _fill_holes(mask)
+    m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
+    nc, lab, st, _ = cv2.connectedComponentsWithStats(m, 8)
+    if nc > 1:
+        m = ((lab == 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))) * 255).astype("uint8")
+    found = cv2.findNonZero(m)
+    pts = (found if found is not None else cv2.findNonZero(mask)).reshape(-1, 2).astype(float)
+
+    p_low = pts[np.argmax(pts[:, 1])]        # near front-bottom corner
+    p_high = pts[np.argmin(pts[:, 1])]       # opposite (far back-top) corner
+    cam_left = p_low[0] < p_high[0]
+    edge_x = pts[:, 0].min() if cam_left else pts[:, 0].max()
+    col = pts[np.abs(pts[:, 0] - edge_x) <= 3]
+    H = col[:, 1].max() - col[:, 1].min()    # prism height (tile face height)
+    Tv = np.array([edge_x - p_low[0], col[:, 1].max() - p_low[1]])  # front-bottom -> back-bottom
+
+    ft_near = p_low + [0, -H]                 # front-top on the near end
+    ft_far = p_high - Tv                      # front-top on the far end
+    fb_far = ft_far + [0, H]                  # front-bottom on the far end
+    quad = _order_quad(np.array([ft_near, ft_far, fb_far, p_low]))
     return quad, (float(quad[:, 0].min()), float(quad[:, 0].max()))
 
 
