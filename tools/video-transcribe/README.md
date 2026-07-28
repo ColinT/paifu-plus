@@ -81,14 +81,17 @@ player to each `t`.
   **score-change** events, then classifies the net round result (tsumo/ron/draw)
   from the deltas. No felt CV. Yaku/han-fu aren't on the overlay → left as a
   question (or a later result-graphic reader).
-- **Pass 2 — hands (haipai / final).** Partly built → `pass2_hands.py` (+ ORB
-  matcher in `tiles.py`). Working: isolate the tile row (largest bright blob),
-  **rectify** it to horizontal (the close-ups are tilted ~15-20°), **seam-split**
-  into per-tile crops, classify each via **ORB** (rotation/scale robust), and
-  escalate unrecognised tiles as labeled crops. Rough edges: mild over-splitting
-  and rightward drift from residual **perspective** (rectify only rotates), and
-  recognition needs the `tiles/` library grown via the labeling loop (it ships
-  with just the dora reference). Seat id: `--seat` for now (nameplate OCR later).
+- **Pass 2 — hands (haipai / final).** Segmentation built → `pass2_hands.py` (+ ORB
+  matcher in `tiles.py`). The close-ups are a sheared parallelogram (tilted long
+  axis, vertical tile seams) with perspective foreshortening, so: isolate the tile
+  row (largest bright blob), read its per-column vertical extent (handles the tilt
+  with no rotation), and split the x-span into the **known N** (14 dealer / 13
+  else) using a **perspective-aware** cut — each tile's width weighted by the local
+  row height, since image width scales with image height under perspective. Yields
+  N cells that track individual tiles across the whole row. Each cell is classified
+  via **ORB** (rotation/scale robust); unrecognised tiles escalate as labeled crops.
+  Remaining: recognition needs the `tiles/` library grown via the labeling loop (it
+  ships with just the dora ref); seat id is `--seat` for now (nameplate OCR later).
 - **Pass 3 — discards (河).** The genuinely hard one on this broadcast (no stable
   river shot): either heavy per-frame table-registration + replay de-dup, or
   human-assisted entry via deep-linked questions. Deferred pending a decision.

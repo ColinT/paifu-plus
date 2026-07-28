@@ -52,64 +52,58 @@ def largest_component(mask):
     return ((lab == biggest).astype("uint8")) * 255
 
 
-def rectify(crop_bgr, mask):
-    """Rotate crop+mask so the tile row is horizontal (via the mask's principal axis)."""
-    pts = cv2.findNonZero(mask)
-    if pts is None or len(pts) < 50:
-        return crop_bgr, mask, 0.0
-    (cx, cy), (w, h), ang = cv2.minAreaRect(pts)
-    if w < h:  # normalize so angle refers to the long axis
-        ang += 90
-    if ang > 45:
-        ang -= 90
-    M = cv2.getRotationMatrix2D((cx, cy), ang, 1.0)
-    hgt, wid = mask.shape
-    rc = cv2.warpAffine(crop_bgr, M, (wid, hgt), flags=cv2.INTER_LINEAR)
-    rm = cv2.warpAffine(mask, M, (wid, hgt), flags=cv2.INTER_NEAREST)
-    return rc, rm, float(ang)
+def segment_tiles(crop_bgr, n_tiles):
+    """Split a hand-region crop into `n_tiles` cells.
 
-
-def segment_tiles(crop_bgr, min_w_frac=0.02):
-    """Return ordered per-tile sub-crops (BGR) from a hand-region crop."""
+    Model: the row is a sheared parallelogram (tilted long axis, but VERTICAL
+    tile seams in the camera image), and for a haipai we know n_tiles. So we take
+    the row's x-span and cut it into n_tiles equal VERTICAL strips (no rotation —
+    that's what broke the seams before). Each strip's vertical extent comes from
+    the tile-mask in that strip, so cells track the row's tilt across x."""
     mask = largest_component(whitish(crop_bgr))
-    rc, rm, ang = rectify(crop_bgr, mask)
-    rows = rm.sum(axis=1)
-    if rows.max() == 0:
-        return [], rc, rm, ang, [], (0, 0)
-    band = np.where(rows > 0.3 * rows.max())[0]
-    y0, y1 = int(band.min()), int(band.max())
-    cols = rm[y0:y1 + 1, :].sum(axis=0).astype(float)
+    cols = mask.sum(axis=0).astype(float)
     if cols.max() == 0:
-        return [], rc, rm, ang, [], (y0, y1)
-    # horizontal extent of the row, then split at seams (local minima of the
-    # face-mask column profile) — the thin dark gaps between touching tiles.
+        return [], mask, []
     present = np.where(cols > 0.15 * cols.max())[0]
     xs, xe = int(present.min()), int(present.max())
-    k = max(3, int(0.01 * rc.shape[1]))
-    sm = np.convolve(cols, np.ones(k) / k, mode="same")
-    minw = max(6, int(min_w_frac * rc.shape[1]))
-    thr = 0.75 * sm[xs:xe + 1].max()
-    seams = []
-    for x in range(xs + 1, xe):
-        if sm[x] < thr and sm[x] <= sm[x - 1] and sm[x] <= sm[x + 1]:
-            if not seams or x - seams[-1] >= minw:
-                seams.append(x)
-    bounds = [xs] + seams + [xe]
-    segs = [(bounds[i], bounds[i + 1]) for i in range(len(bounds) - 1)
-            if bounds[i + 1] - bounds[i] >= minw]
-    tiles_out = [rc[max(0, y0 - 4):y1 + 4, a:b] for a, b in segs]
-    return tiles_out, rc, rm, ang, segs, (y0, y1)
+    xr = np.arange(xs, xe + 1)
+    # per-column vertical extent of the row -> its image height profile h(x)
+    ytop = np.full(len(xr), np.nan)
+    ybot = np.full(len(xr), np.nan)
+    for j, x in enumerate(xr):
+        ys = np.where(mask[:, x] > 0)[0]
+        if len(ys):
+            ytop[j], ybot[j] = ys[0], ys[-1]
+    ok = ~np.isnan(ytop)
+    ytop = np.interp(xr, xr[ok], ytop[ok])
+    ybot = np.interp(xr, xr[ok], ybot[ok])
+    k = max(3, int(0.03 * len(xr)))
+    h = np.convolve(np.clip(ybot - ytop, 1, None), np.ones(k) / k, mode="same")
+    # perspective-aware split: image tile width ~ image tile height, so equal
+    # WORLD widths fall at equal increments of the cumulative 1/h(x).
+    cum = np.cumsum(1.0 / h)
+    cum /= cum[-1]
+    bounds = [xs] + [int(xr[np.searchsorted(cum, i / n_tiles)])
+                     for i in range(1, n_tiles)] + [xe]
+    cells, crops = [], []
+    for i in range(n_tiles):
+        xa, xb = bounds[i], bounds[i + 1]
+        if xb - xa < 2:
+            continue
+        ys = np.where(mask[:, xa:xb].sum(axis=1) > 0)[0]
+        if len(ys) == 0:
+            continue
+        y0, y1 = int(ys.min()), int(ys.max())
+        cells.append((xa, xb, y0, y1))
+        crops.append(crop_bgr[y0:y1 + 1, xa:xb])
+    return crops, mask, cells
 
 
-def read_hand(lib_orb, crop_bgr):
-    """Classify each segmented tile. Returns (codes, per-tile crops, segs meta)."""
-    seg = segment_tiles(crop_bgr)
-    tiles_out, rc, rm, ang, segs, band = seg
-    codes = []
-    for t in tiles_out:
-        code, inliers = tiles.classify_orb(t, lib_orb)
-        codes.append((code, inliers))
-    return codes, tiles_out, {"angle": ang, "segments": segs, "band": band, "rectified": rc}
+def read_hand(lib_orb, crop_bgr, n_tiles):
+    """Classify each of the n_tiles segmented cells. Returns (codes, crops, meta)."""
+    crops, mask, cells = segment_tiles(crop_bgr, n_tiles)
+    codes = [tiles.classify_orb(t, lib_orb) for t in crops]
+    return codes, crops, {"cells": cells, "mask": mask}
 
 
 def main():
@@ -121,6 +115,7 @@ def main():
     ap.add_argument("--at", type=float, help="timestamp (s) for --url/--video")
     ap.add_argument("--clip-start", type=float, default=0.0)
     ap.add_argument("--seat", type=int, help="0-3 whose hand this is (else unknown)")
+    ap.add_argument("--count", type=int, default=13, help="tile count (14 for the dealer's haipai)")
     ap.add_argument("--region", help="hand-band bbox 'x,y,w,h' (ref coords); else config.hand_band")
     ap.add_argument("--tiles", default="tiles")
     ap.add_argument("--height", type=int, default=720)
@@ -154,7 +149,7 @@ def main():
     hand_crop = crop(img, R)
 
     lib_orb = tiles.load_library_orb(args.tiles)
-    codes, tile_crops, meta = read_hand(lib_orb, hand_crop)
+    codes, tile_crops, meta = read_hand(lib_orb, hand_crop, args.count)
 
     out_dir = os.path.dirname(args.out) if args.out else "out"
     unlabeled = os.path.join(out_dir, "unlabeled")
@@ -175,13 +170,11 @@ def main():
     if args.debug:
         os.makedirs(out_dir, exist_ok=True)
         cv2.imwrite(os.path.join(out_dir, "hand_crop.png"), hand_crop)
-        cv2.imwrite(os.path.join(out_dir, "hand_rectified.png"), meta["rectified"])
-        viz = meta["rectified"].copy()
-        y0, y1 = meta["band"]
-        for (a, b) in meta["segments"]:
+        viz = hand_crop.copy()
+        for (a, b, y0, y1) in meta["cells"]:
             cv2.rectangle(viz, (a, y0), (b, y1), (0, 0, 255), 2)
         cv2.imwrite(os.path.join(out_dir, "hand_segments.png"), viz)
-        print(f"debug: angle={meta['angle']:.1f} segments={len(meta['segments'])} -> {out_dir}")
+        print(f"debug: cells={len(meta['cells'])}/{args.count} -> {out_dir}")
 
     result = {"seat": SEATS[args.seat] if args.seat is not None else None,
               "tiles_found": len(tile_crops), "hand": hand,
