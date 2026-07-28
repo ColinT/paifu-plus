@@ -34,11 +34,27 @@ from pass0_overlay import crop, scale_region, source_link
 SEATS = ("E", "S", "W", "N")
 
 
+_CLAHE = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+
+
 def whitish(bgr):
-    """Mask of bright tile-face pixels (white faces, not orange edges / blue felt)."""
-    b, g, r = cv2.split(bgr.astype(int))
-    m = (r > 150) & (g > 150) & (b > 135)
-    m = (m.astype("uint8")) * 255
+    """Mask of white tile-face pixels, chosen ADAPTIVELY per frame (no fixed
+    0-255 cutoffs).
+
+    Discriminator is 'whiteness' = min(R,G,B): a pixel is only white if ALL
+    channels are high, which rejects the bluish felt (low R) and the orange edge
+    (low B) — a plain HSV low-sat test fails here because this felt is only weakly
+    saturated and merges with the tiles. The level is adaptive: the full frame is
+    trimodal (dark foreground / felt / bright tiles), so we take the brightest
+    class of a 3-way multi-Otsu (with CLAHE evening out exposure so shadowed tiles
+    survive), falling back to binary Otsu if multi-Otsu can't split."""
+    mn = _CLAHE.apply(bgr.min(axis=2).astype("uint8"))
+    try:
+        from skimage.filters import threshold_multiotsu
+        t = threshold_multiotsu(mn, classes=3)
+        m = ((mn > t[-1]).astype("uint8")) * 255
+    except Exception:
+        _, m = cv2.threshold(mn, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), "uint8"))
 
 

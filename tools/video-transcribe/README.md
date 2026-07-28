@@ -92,12 +92,16 @@ player to each `t`.
   haipai fills much of it) and picks the haipai among bright blobs by **shape**: a
   row of N tiles (3 wide : 4 high each) has overall aspect ~3N/4, and among
   aspect-plausible blobs the near hand is the one with the **largest tiles**
-  (biggest short side, closest to camera). That reliably targets the near hand —
-  but the blob still **merges with adjacent white clutter** (reaching-hand area /
-  wall), corrupting the fitted top/right edge, so a robust auto version needs
-  bridge-cutting (erosion/watershed) or the orange top-edge cue or a learned
-  detector. Remaining: recognition needs the `tiles/` library grown via the
-  labeling loop (ships with just the dora ref); seat id is `--seat` for now.
+  (biggest short side, closest to camera). The mask is **adaptive/normalized**
+  (`whitish`): whiteness = `min(R,G,B)` (rejects the bluish felt and orange edge),
+  CLAHE-normalized, thresholded by the brightest class of a 3-way multi-Otsu — no
+  fixed 0-255 cutoffs, so shadowed tiles survive and the felt is excluded. This
+  reliably finds the near hand and its **bottom edge**; the residual issue is the
+  player's **reaching hand/arm** (skin is bright too) merging into the top of the
+  blob and corrupting the fitted top edge. Planned fix: reconstruct the top edge
+  from the reliable bottom edge + known N + the 3:4 tile aspect, rather than
+  fitting it to the contaminated blob. Until then use `--quad`. Recognition needs
+  the `tiles/` library grown via the labeling loop; seat id is `--seat` for now.
 - **Pass 3 — discards (河).** The genuinely hard one on this broadcast (no stable
   river shot): either heavy per-frame table-registration + replay de-dup, or
   human-assisted entry via deep-linked questions. Deferred pending a decision.
