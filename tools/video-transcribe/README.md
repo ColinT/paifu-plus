@@ -75,10 +75,12 @@ player to each `t`.
 - **Pass 0 — overlays → round headers.** round / honba / sticks / dora / names /
   scores / **per-seat riichi** / dealer. Done. The cheap, reliable skeleton.
   → `pass0_overlay.py` (+ `tiles.py` for the dora indicator)
-- **Pass 1 — overlay event timeline + result.** Sample frames across a round and
-  diff overlay state → **riichi-declared(seat, t)** and **score-change** events
-  (both already readable), plus the per-round result graphic → `KyokuResult`.
-  This is the next pass — it needs no felt CV.
+- **Pass 1 — overlay event timeline + result.** Done → `pass1_events.py`. Samples
+  a round window, keeps points-conservation-valid frames (which also recovers the
+  stick count), and diffs consecutive states → **riichi-declared(seat, t)** and
+  **score-change** events, then classifies the net round result (tsumo/ron/draw)
+  from the deltas. No felt CV. Yaku/han-fu aren't on the overlay → left as a
+  question (or a later result-graphic reader).
 - **Pass 2 — hands (haipai / final).** Detect which seat's hand a close-up shows
   (on-table nameplate) and classify it with the ORB matcher over `tiles/`. Grows
   the reference library.
@@ -159,4 +161,8 @@ python pass0_overlay.py --config config/ketteisen-wrc.json --at 690 --out out/he
 
 # calibrate crop regions against a frame (saves each crop, no OCR):
 python pass0_overlay.py --config ... --at 690 --dump-regions --out out/x
+
+# pass 1: overlay event timeline for one round (riichi / score / result)
+python pass1_events.py --config config/ketteisen-wrc.json \
+    --start 661 --end 980 --step 8 --out out/e1_events.json
 ```
