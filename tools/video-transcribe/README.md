@@ -16,22 +16,31 @@ Established against a real broadcast (最高位戦 / WRC playoff, `zzLJcZeDdnM`)
 
 | Data | Visible? | Approach |
 | --- | --- | --- |
-| Overlay: round, honba, riichi sticks, dora, names, scores | **Yes** — clean, fixed-position graphics | OCR of fixed crop regions (pass 0) |
+| Overlay: round, honba, riichi sticks, dora, names, scores, **per-seat riichi** | **Yes** — clean, fixed-position graphics | OCR / red-badge detection of fixed crop regions (pass 0) |
 | Result graphic (win / yaku / han-fu / deltas) | Yes, per round | OCR (pass 1) |
-| Discards (河) | Yes — face-up, mostly stationary | detect + classify from each seat's pond (pass 2) |
-| Calls (pon/chi/kan) | Yes — face-up, rotated | rotation encodes `fromSeat` (as in the PDF importer) |
-| Riichi | Yes — sideways tile + 1000 stick + overlay counter | multiple signals |
-| **Near (bottom) seat's** haipai + draws | Yes — angled toward camera | classify, but occlusion-aware |
-| **Other three seats'** haipai | Only if the director cuts to each hand | per-seat timestamps where available, else unknown |
-| **Opponents' concealed draws** | **No** — never face-visible | left blank by design (NOT a question) |
+| Riichi declaration | Yes — red リーチ badge + 1000 stick + score −1000 + overlay counter | overlay badge (done in pass 0), all cross-checking |
+| Calls (pon/chi/kan) | Sometimes — face-up melds, when on-screen | rotation encodes `fromSeat` (as in the PDF importer) |
+| Each seat's hand (haipai / final) | Yes — the director cuts to each hand in close-up | classify (needs the seat-ID from the on-table nameplate), occlusion-aware |
+| Discards (河) | **Hard on this broadcast** — see directing note | no stable river shot; human-assisted or heavy table-registration |
+| Opponents' concealed draws | **No** — never face-visible | left blank by design (NOT a question) |
 
-Two hard limits fall out of this:
+**Directing style (observed on `zzLJcZeDdnM`, E1).** There is **no locked overhead
+table shot**. The broadcast is a directed sequence of **per-player hand close-ups**
+(the camera faces one player's hand at a time; the on-table nameplate identifies
+whose) plus centre/dead-wall shots, cutting every few seconds. Consequences:
 
-1. **Only the near seat's hand is ever readable.** Opponents' hands are backfilled
-   from their discards / melds / final hand, or left unknown.
-2. **Opponents' draws are unobservable.** The transcript is **discard/call/result-
-   centric**, not draw-centric, for 3 of 4 players. We never raise a "missing
-   drawn tile" question for an opponent — only for observable-but-uncertain things.
+1. **The 河 (discard river) is never a clean, stable, dedicated subject.** Reading
+   the discard *sequence* from the felt would need per-frame table registration on
+   a constantly-cutting camera, with the river often off-frame or occluded — so
+   discards are the **hardest** thing here, not the easiest. Realistically:
+   human-assisted (deep-linked questions) unless/until a registration pass is built.
+2. **The persistent overlay is the reliable channel.** Round, scores, honba,
+   sticks, dora, and **per-seat riichi** all read cleanly from fixed regions and
+   *update live* — so riichi timing and score deltas come from the overlay, no felt
+   CV. (Cross-check at E1 t=880: riichi `[_,_,✓,✓]` = 2 sticks = two seats at 29000.)
+3. **Hands are readable** (each shown in close-up) → better support for
+   haipai/final-hand than for discards. Opponents' concealed **draws** remain
+   unobservable; never raise a "missing draw" question for them.
 
 ## Questions (the escalation mechanism)
 
@@ -64,12 +73,18 @@ player to each `t`.
 ## Pipeline (phased — each phase is independently useful)
 
 - **Pass 0 — overlays → round headers.** round / honba / sticks / dora / names /
-  scores. Near-solved; the cheap skeleton for everything else. → `pass0_overlay.py`
-- **Pass 1 — result graphics → `KyokuResult`** per round.
-- **Pass 2 — rivers → discards + riichi + calls.** The heavy pass. Must handle
-  camera cuts (gate on the canonical table view) and **de-duplicate instant
-  replays** (a replayed discard must not be counted twice).
-- **Pass 3 — near-seat haipai + draws;** opponents backfilled where possible.
+  scores / **per-seat riichi** / dealer. Done. The cheap, reliable skeleton.
+  → `pass0_overlay.py` (+ `tiles.py` for the dora indicator)
+- **Pass 1 — overlay event timeline + result.** Sample frames across a round and
+  diff overlay state → **riichi-declared(seat, t)** and **score-change** events
+  (both already readable), plus the per-round result graphic → `KyokuResult`.
+  This is the next pass — it needs no felt CV.
+- **Pass 2 — hands (haipai / final).** Detect which seat's hand a close-up shows
+  (on-table nameplate) and classify it with the ORB matcher over `tiles/`. Grows
+  the reference library.
+- **Pass 3 — discards (河).** The genuinely hard one on this broadcast (no stable
+  river shot): either heavy per-frame table-registration + replay de-dup, or
+  human-assisted entry via deep-linked questions. Deferred pending a decision.
 
 Human input: the operator scrubs the video and supplies **round-start timestamps**
 (and, where the broadcast shows them, per-seat haipai-reveal timestamps). The

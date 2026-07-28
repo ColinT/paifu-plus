@@ -142,18 +142,30 @@ def parse_names(reader, img, region, prep=False):
     return names, confs
 
 
-def detect_dealer(img, region, n=4):
-    """Column with the strongest red underline = current dealer. Returns index|None."""
+def _red_counts(img, region, n=4):
+    """Per-column count of bright-red pixels in a band (dealer line / riichi tag)."""
     x, y, w, h = region
     sub = img[max(0, y):y + h, max(0, x):x + w]
     if sub.size == 0:
-        return None, [0] * n
+        return [0] * n, 0
     b, g, r = sub[:, :, 0].astype(int), sub[:, :, 1].astype(int), sub[:, :, 2].astype(int)
     red = (r > 120) & (r - g > 60) & (r - b > 60)
     cw = w // n
-    counts = [int(red[:, i * cw:(i + 1) * cw].sum()) for i in range(n)]
+    return [int(red[:, i * cw:(i + 1) * cw].sum()) for i in range(n)], cw * h
+
+
+def detect_dealer(img, region, n=4):
+    """Column with the strongest red underline = current dealer. Returns index|None."""
+    counts, _ = _red_counts(img, region, n)
     best = int(np.argmax(counts))
     return (best if counts[best] > 15 else None), counts
+
+
+def detect_riichi(img, region, n=4):
+    """Per-seat riichi = a red リーチ badge present in that nameplate column."""
+    counts, cell = _red_counts(img, region, n)
+    thresh = max(30, cell * 0.02)  # badge fills a real patch, not a stray pixel
+    return [c > thresh for c in counts], counts
 
 
 # ---- main -----------------------------------------------------------------
@@ -222,6 +234,8 @@ def read_overlay(reader, reader_en, lib, cfg, img, abs_t, unlabeled_dir=None):
                 f"Points don't reconcile: Σscores={sum(scores)} + {sticks or 0}×1000 "
                 f"sticks = {total} ≠ {4 * start}. Verify the scores and stick count.")
 
+    riichi, riichi_counts = detect_riichi(img, R["riichi"]) if "riichi" in R else ([False] * 4, [])
+
     dealer, red_counts = detect_dealer(img, R["dealer_line"])
     if rnd is not None:
         expected = rnd % 4
@@ -238,7 +252,7 @@ def read_overlay(reader, reader_en, lib, cfg, img, abs_t, unlabeled_dir=None):
             "round": rnd, "honba": honba, "riichiSticks": sticks,
             "dora": [dora] if dora is not None else [],
             "names": names, "romaji": romaji, "scores": scores,
-            "dealerSeat": dealer,
+            "dealerSeat": dealer, "riichi": riichi,
         },
         "confidence": {
             "round": round(rc, 2), "dora": round(dc, 2),
@@ -246,7 +260,8 @@ def read_overlay(reader, reader_en, lib, cfg, img, abs_t, unlabeled_dir=None):
             "scores": [round(c, 2) for c in sconf],
         },
         "questions": questions,
-        "raw": {"round": rraw, "dora_score": dc, "red_counts": red_counts},
+        "raw": {"round": rraw, "dora_score": dc, "red_counts": red_counts,
+                "riichi_counts": riichi_counts},
     }
 
 
