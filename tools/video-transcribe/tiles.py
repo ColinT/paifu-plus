@@ -65,6 +65,67 @@ def classify(crop_bgr, lib, thresh=0.5):
     return (best_code if best >= thresh else None), round(best, 3)
 
 
+## ---- ORB feature matching (scale/rotation robust; for felt tiles) ----------
+# Template matching suits upright, fixed-scale tiles (the overlay dora). Tiles in
+# hands and rivers are rotated and perspective-skewed, so those use ORB features
+# + a Lowe ratio test, with a homography-inlier count as the geometric score.
+
+_ORB = cv2.ORB_create(nfeatures=400)
+_BF = cv2.BFMatcher(cv2.NORM_HAMMING)
+
+
+def _orb_features(crop_bgr):
+    g = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
+    return _ORB.detectAndCompute(g, None)  # (keypoints, descriptors)
+
+
+def load_library_orb(lib_dir):
+    """dict: code -> list of (keypoints, descriptors) for ORB matching."""
+    lib = {}
+    for path in glob.glob(os.path.join(lib_dir, "*", "*.png")):
+        try:
+            code = int(os.path.basename(os.path.dirname(path)))
+        except ValueError:
+            continue
+        img = cv2.imread(path)
+        if img is None:
+            continue
+        kp, des = _orb_features(img)
+        if des is not None and len(kp) >= 4:
+            lib.setdefault(code, []).append((kp, des))
+    return lib
+
+
+def _orb_score(q_kp, q_des, r_kp, r_des):
+    """Geometric-consistent match count between query and one reference."""
+    if q_des is None or r_des is None or len(q_des) < 4 or len(r_des) < 4:
+        return 0
+    good = []
+    for m in _BF.knnMatch(q_des, r_des, k=2):
+        if len(m) == 2 and m[0].distance < 0.75 * m[1].distance:
+            good.append(m[0])
+    if len(good) < 4:
+        return len(good)
+    import numpy as np
+    src = np.float32([q_kp[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+    dst = np.float32([r_kp[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+    _, mask = cv2.findHomography(src, dst, cv2.RANSAC, 5.0)
+    return int(mask.sum()) if mask is not None else len(good)
+
+
+def classify_orb(crop_bgr, lib_orb, min_inliers=8):
+    """(code, inliers). code is None when the best geometric match is too weak."""
+    if not lib_orb or crop_bgr is None or crop_bgr.size == 0:
+        return None, 0
+    q_kp, q_des = _orb_features(crop_bgr)
+    best_code, best = None, 0
+    for code, refs in lib_orb.items():
+        s = max((_orb_score(q_kp, q_des, rk, rd) for rk, rd in refs), default=0)
+        if s > best:
+            best, best_code = s, code
+    return (best_code if best >= min_inliers else None), best
+
+
 def add_reference(lib_dir, code, crop_bgr):
     """Save a labeled crop as a new reference for `code`; returns its path."""
     d = os.path.join(lib_dir, str(int(code)))
