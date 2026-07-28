@@ -101,13 +101,28 @@ reason the app has its own save format.
   backend. The ML does **not** require Python — it's just the easiest home for
   the libraries.
 
+## Frame fetching (long VODs, small disk)
+
+A broadcast can be 4+ hours, so we never download the whole video. `frames.py`
+fetches **single frames by timestamp**: yt-dlp resolves the direct media URL once,
+then ffmpeg range-seeks one frame over HTTP (~6s/frame, peak disk ~one frame). A
+format that won't range-seek falls back to a ~2s section (a few MB, auto-deleted).
+Local files are also supported (`--video`), mainly for offline calibration.
+
 ## Usage
 
 ```bash
-# deps: Python 3.10+, ffmpeg on PATH, yt-dlp (for URL sources)
+# deps: Python 3.10+, ffmpeg on PATH, yt-dlp (installed via requirements)
 pip install -r requirements.txt
 
-# pass 0: read the overlay at one or more round-start timestamps
+# pass 0: read the overlay at one or more round-start timestamps (absolute seconds)
 python pass0_overlay.py --config config/ketteisen-wrc.json \
-    --video path/to/clip.mp4 --at 690 [--at ...] --out headers.json
+    --url https://www.youtube.com/watch?v=zzLJcZeDdnM --at 690 [--at ...] \
+    --out out/headers.json
+
+# --url defaults to the config's source.id, so this is equivalent:
+python pass0_overlay.py --config config/ketteisen-wrc.json --at 690 --out out/headers.json
+
+# calibrate crop regions against a frame (saves each crop, no OCR):
+python pass0_overlay.py --config ... --at 690 --dump-regions --out out/x
 ```

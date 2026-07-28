@@ -22,13 +22,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
-import subprocess
-import sys
-import tempfile
 
 import cv2
 import numpy as np
+
+from frames import make_source
 
 # ---- tile / round vocab ---------------------------------------------------
 
@@ -43,34 +41,6 @@ TILE_ALLOW = "".join(list(NUM) + list(SUIT) + list(HONOR))
 
 
 # ---- frame + OCR helpers --------------------------------------------------
-
-def ffmpeg_bin() -> str:
-    exe = shutil.which("ffmpeg")
-    if not exe:
-        sys.exit("ffmpeg not found on PATH (needed to extract frames).")
-    return exe
-
-
-def extract_frame(video: str, t: float) -> "np.ndarray":
-    """Grab a single frame at t seconds as a BGR image (via ffmpeg -> temp png)."""
-    fd, png = tempfile.mkstemp(suffix=".png")
-    os.close(fd)
-    try:
-        subprocess.run(
-            [ffmpeg_bin(), "-y", "-ss", f"{t:.3f}", "-i", video,
-             "-frames:v", "1", "-q:v", "2", png],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True,
-        )
-        img = cv2.imread(png)
-        if img is None:
-            raise RuntimeError(f"could not read frame at t={t}")
-        return img
-    finally:
-        try:
-            os.remove(png)
-        except OSError:
-            pass
-
 
 def scale_region(region, img_w, img_h, ref_w, ref_h):
     sx, sy = img_w / ref_w, img_h / ref_h
@@ -210,7 +180,7 @@ def source_link(cfg, abs_t):
     return {"file": src.get("file"), "offsetSec": round(abs_t, 2)}
 
 
-def read_overlay(reader, reader_en, cfg, img, abs_t, clip_t):
+def read_overlay(reader, reader_en, cfg, img, abs_t):
     h, w = img.shape[:2]
     R = {k: scale_region(v, w, h, cfg["ref_width"], cfg["ref_height"])
          for k, v in cfg["regions"].items()}
@@ -272,7 +242,6 @@ def read_overlay(reader, reader_en, cfg, img, abs_t, clip_t):
 
     return {
         "t": round(abs_t, 2),
-        "clip_t": round(clip_t, 2),
         "link": source_link(cfg, abs_t),
         "header": {
             "round": rnd, "honba": honba, "riichiSticks": sticks,
@@ -293,11 +262,13 @@ def read_overlay(reader, reader_en, cfg, img, abs_t, clip_t):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
-    ap.add_argument("--video", required=True)
+    ap.add_argument("--url", help="YouTube URL (frames fetched by timestamp, no full download)")
+    ap.add_argument("--video", help="local video file (alternative to --url)")
     ap.add_argument("--at", type=float, action="append", required=True,
                     help="absolute source timestamp (s) of a round overlay; repeatable")
     ap.add_argument("--clip-start", type=float, default=0.0,
-                    help="clip's start offset in the source video, for --at->clip mapping")
+                    help="for --video only: the clip's start offset in the source")
+    ap.add_argument("--height", type=int, default=720, help="stream height to fetch")
     ap.add_argument("--out", default=None)
     ap.add_argument("--dump-regions", action="store_true",
                     help="save each crop under out/regions_<t>/ for calibration, then exit")
@@ -307,9 +278,18 @@ def main():
     with open(args.config, encoding="utf-8") as f:
         cfg = json.load(f)
 
+    # default source from config (its youtube id) when neither --url nor --video given
+    url = args.url
+    if not url and not args.video:
+        src = cfg.get("source", {})
+        if src.get("type") == "youtube" and src.get("id"):
+            url = f"https://www.youtube.com/watch?v={src['id']}"
+    source = make_source(url=url, video=args.video,
+                         clip_start=args.clip_start, height=args.height)
+
     if args.dump_regions:
         for t in args.at:
-            img = extract_frame(args.video, t - args.clip_start)
+            img = source.grab(t)
             h, w = img.shape[:2]
             d = os.path.join(os.path.dirname(args.out or "out"), f"regions_{int(t)}")
             os.makedirs(d, exist_ok=True)
@@ -326,8 +306,8 @@ def main():
 
     results = []
     for t in args.at:
-        img = extract_frame(args.video, t - args.clip_start)
-        results.append(read_overlay(reader, reader_en, cfg, img, t, t - args.clip_start))
+        img = source.grab(t)
+        results.append(read_overlay(reader, reader_en, cfg, img, t))
 
     payload = {"broadcast": cfg.get("broadcast"), "rounds": results}
     text = json.dumps(payload, ensure_ascii=False, indent=2)
