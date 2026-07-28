@@ -108,22 +108,38 @@ def _fit_line(x, y, iters=3):
     return m, b
 
 
-def row_quad(mask):
-    """4 corners (TL,TR,BR,BL) of the tile row, from its top/bottom edge lines.
-    Seams are vertical (camera setup) so the left/right edges are the x-extent;
-    top and bottom are fitted lines, so a converging (perspective) row is a
-    general quadrilateral, not just a parallelogram."""
-    cols = mask.sum(axis=0).astype(float)
-    present = np.where(cols > 0.15 * cols.max())[0]
-    xs, xe = int(present.min()), int(present.max())
+def row_quad(mask, n_tiles):
+    """4 corners (TL,TR,BR,BL) of the tile row.
+
+    The BOTTOM edge is reliable (a reaching hand/arm merges into the TOP of the
+    blob, not the bottom), so we anchor on it: fit the bottom line robustly, take
+    the x-extent from its inliers (this also drops a merged nameplate whose bottom
+    sits at a different y), then derive the expected tile height from the known N
+    and the 3:4 tile aspect (height = 4/3 * width, width = row_len / N). The TOP
+    edge is fitted only over columns whose measured height is plausible (<=1.5x
+    expected) — which rejects the arm, where the top balloons upward — and we fall
+    back to a parallel edge if too little survives. Two fitted lines keep the
+    perspective (trapezoid), not just a parallelogram."""
     xr, yt, yb = [], [], []
-    for x in range(xs, xe + 1):
+    for x in range(mask.shape[1]):
         ys = np.where(mask[:, x] > 0)[0]
         if len(ys):
             xr.append(x); yt.append(ys[0]); yb.append(ys[-1])
-    xr = np.array(xr, float)
-    mt, bt = _fit_line(xr, np.array(yt, float))  # top edge line (outlier-robust)
-    mb, bb = _fit_line(xr, np.array(yb, float))  # bottom edge line
+    xr, yt, yb = np.array(xr, float), np.array(yt, float), np.array(yb, float)
+    # Keep columns whose height is near the median (the tile row) and fit both
+    # edges + the x-extent from those. NOTE: this reduces — but does not fully
+    # solve — contamination from a reaching arm, which can form its own
+    # plausible-height band beside the row on the full frame. For a clean result
+    # use --quad; robust auto-isolation of the arm needs skin removal or a learned
+    # detector (see README).
+    h = yb - yt
+    good = h <= 1.5 * np.median(h)
+    if good.sum() < 3:
+        good = np.ones_like(h, bool)
+    xg = xr[good]
+    xs, xe = float(xg.min()), float(xg.max())
+    mt, bt = _fit_line(xg, yt[good])
+    mb, bb = _fit_line(xg, yb[good])
     quad = np.float32([[xs, mt * xs + bt], [xe, mt * xe + bt],
                        [xe, mb * xe + bb], [xs, mb * xs + bb]])
     return quad, (xs, xe)
@@ -139,7 +155,7 @@ def segment_tiles(crop_bgr, n_tiles):
     comp, cand = select_haipai(mask, n_tiles)
     if comp is None:
         return [], mask, None, None, cand
-    quad, _ = row_quad(comp)
+    quad, _ = row_quad(comp, n_tiles)
     crops, warp = deskew_split(crop_bgr, quad, n_tiles)
     return crops, comp, quad, warp, cand
 

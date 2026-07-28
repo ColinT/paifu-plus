@@ -97,11 +97,15 @@ player to each `t`.
   CLAHE-normalized, thresholded by the brightest class of a 3-way multi-Otsu — no
   fixed 0-255 cutoffs, so shadowed tiles survive and the felt is excluded. This
   reliably finds the near hand and its **bottom edge**; the residual issue is the
-  player's **reaching hand/arm** (skin is bright too) merging into the top of the
-  blob and corrupting the fitted top edge. Planned fix: reconstruct the top edge
-  from the reliable bottom edge + known N + the 3:4 tile aspect, rather than
-  fitting it to the contaminated blob. Until then use `--quad`. Recognition needs
-  the `tiles/` library grown via the labeling loop; seat id is `--seat` for now.
+  player's **reaching hand/arm** (skin is bright too) merging into the blob. Tried
+  reconstructing the row from the reliable bottom edge + median-height gating +
+  the 3:4 aspect (and RANSAC on the bottom): it *reduces* but does **not** solve
+  the contamination — on the full frame the arm forms its own plausible-height
+  band beside/right of the row, so the x-extent still over-reaches. Robust auto
+  isolation needs **skin removal** (subtract a YCrCb/HSV skin mask — cheap, the
+  targeted next step) or a **learned tile/row detector**. Until then `--quad`
+  (operator corners) is the reliable path. Recognition needs the `tiles/` library
+  grown via the labeling loop; seat id is `--seat` for now.
 - **Pass 3 — discards (河).** The genuinely hard one on this broadcast (no stable
   river shot): either heavy per-frame table-registration + replay de-dup, or
   human-assisted entry via deep-linked questions. Deferred pending a decision.
