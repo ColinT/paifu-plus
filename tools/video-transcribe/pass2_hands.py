@@ -164,30 +164,49 @@ def segment_tiles(crop_bgr, n_tiles):
     return crops, comp, quad, warp, cand
 
 
+def _dp_borders(dark, n_tiles, lam=2.0):
+    """Solve for the n_tiles-1 borders by dynamic programming: minimize
+    Sum darkness(border) + lam * (width deviation / pitch)^2. So each border is
+    pulled toward a dark VALLEY (a white seam) while the quadratic term keeps the
+    tiles ~evenly spaced. Where a seam is weak (e.g. two dense souzu whose gap
+    nearly fills in), the spacing prior gracefully holds the border near its
+    expected place instead of snapping to a wrong valley. Each border is searched
+    only within +/-0.6 pitch of its expected position (keeps it ordered and fast)."""
+    W = len(dark)
+    d = (dark - dark.min()) / (dark.max() - dark.min() + 1e-9)   # 0=white, 1=symbol
+    pitch = W / n_tiles
+    win = int(0.6 * pitch)
+    cand = [np.unique(np.clip(np.arange(round(i * pitch) - win, round(i * pitch) + win + 1), 1, W - 1))
+            for i in range(1, n_tiles)]
+    prev_pos, prev_cost, ptr = np.array([0.0]), np.array([0.0]), []
+    for i in range(n_tiles - 1):
+        xi = cand[i].astype(float)
+        span = lam * ((xi[None, :] - prev_pos[:, None] - pitch) / pitch) ** 2
+        span[xi[None, :] <= prev_pos[:, None]] = 1e18            # keep borders in order
+        tot = prev_cost[:, None] + span
+        bp = np.argmin(tot, axis=0)
+        prev_cost = tot[bp, np.arange(len(xi))] + d[xi.astype(int)]
+        ptr.append((xi, bp)); prev_pos = xi
+    final = prev_cost + lam * ((W - prev_pos - pitch) / pitch) ** 2
+    j, b = int(np.argmin(final)), []
+    for i in reversed(range(n_tiles - 1)):
+        xi, bp = ptr[i]; b.append(int(xi[j])); j = int(bp[j])
+    return [0] + sorted(b) + [W]
+
+
 def split_by_symbols(warp, n_tiles):
-    """Cut the deskewed strip at the tiles' SYMBOLS, not on a blind even grid.
+    """Cut the deskewed strip at the real tile seams, not on a blind even grid.
 
     Residual skew makes an even N-split straddle boundaries — a cell ends up half
-    one tile, half the next, and classifies to neither. Each tile instead carries
-    exactly one dark symbol cluster, so the column-darkness profile peaks once per
-    tile: take the n_tiles strongest peaks as centres and put each border at the
-    whitest column between adjacent centres (the seam). Falls back to an even split
-    if the peak count is wrong."""
+    one tile, half the next, and classifies to neither. The column-darkness profile
+    dips at the white seams between tiles and rises over the symbols; a DP solver
+    (`_dp_borders`) places the n_tiles-1 borders at those valleys under a soft
+    equal-spacing prior."""
     H, W = warp.shape[:2]
     gray = cv2.cvtColor(warp, cv2.COLOR_BGR2GRAY).astype(float)
     dark = 255 - gray[int(0.18 * H):int(0.82 * H), :].mean(axis=0)
     dark = np.convolve(dark, np.ones(7) / 7, mode="same")
-    try:
-        from scipy.signal import find_peaks
-        pk, _ = find_peaks(dark, distance=int(0.62 * W / n_tiles), prominence=3)
-    except Exception:
-        pk = np.array([x for x in range(1, W - 1) if dark[x] >= dark[x - 1] and dark[x] > dark[x + 1]])
-    pk = sorted(sorted(pk, key=lambda p: -dark[p])[:n_tiles])
-    if len(pk) != n_tiles:
-        cw = W // n_tiles
-        borders = [i * cw for i in range(n_tiles)] + [W]
-    else:
-        borders = [0] + [pk[i] + int(np.argmin(dark[pk[i]:pk[i + 1]])) for i in range(n_tiles - 1)] + [W]
+    borders = _dp_borders(dark, n_tiles)
     return [cv2.resize(warp[:, borders[i]:borders[i + 1]], (CELL_W, CELL_H)) for i in range(n_tiles)]
 
 
