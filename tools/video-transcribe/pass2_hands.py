@@ -169,6 +169,35 @@ def deskew_split(img, quad, n_tiles):
     return [warp[:, i * CELL_W:(i + 1) * CELL_W] for i in range(n_tiles)], warp
 
 
+def frame_score(img, n_tiles):
+    """How cleanly this frame's haipai segments. The hand is a MOVING object and
+    the tiles are ~static, so across nearby frames the frame where the hand is
+    clear of the row is the one whose picked blob is most row-shaped: aspect
+    closest to 3N/4 (a touching hand merges in and distorts the ratio). Returns
+    (score, info); higher is cleaner."""
+    comp, info = select_haipai(close_row(whitish(img)), n_tiles)
+    if comp is None or info.get("picked") is None:
+        return -1e9, info
+    return -abs(info["picked"]["ratio"] - info["target"]), info
+
+
+def scan_best_frame(source, at, half, step, n_tiles):
+    """Sample frames in [at-half, at+half] every `step` s; return (best_img, t,
+    scores). Picks the cleanest by frame_score — a temporal, colour-free way to
+    catch a moment when the hand isn't touching the tiles."""
+    times, t = [], at - half
+    while t <= at + half + 1e-6:
+        times.append(round(t, 2)); t += step
+    best, scores = None, []
+    for tt in times:
+        img = source.grab(tt)
+        s, info = frame_score(img, n_tiles)
+        scores.append((tt, round(s, 1), info.get("picked")))
+        if best is None or s > best[1]:
+            best = (img, s, tt)
+    return best[0], best[2], scores
+
+
 def read_hand(lib_orb, crop_bgr, n_tiles):
     """Classify each of the n_tiles deskewed cells. Returns (codes, crops, meta)."""
     crops, mask, quad, warp, cand = segment_tiles(crop_bgr, n_tiles)
@@ -191,6 +220,9 @@ def main():
                                    "TL,TR,BR,BL as 'x0,y0,x1,y1,x2,y2,x3,y3' (reliable deskew)")
     ap.add_argument("--tiles", default="tiles")
     ap.add_argument("--height", type=int, default=720)
+    ap.add_argument("--scan", type=float, default=0.0,
+                    help="±seconds to scrub around --at for the cleanest (hand-free) frame")
+    ap.add_argument("--scan-step", type=float, default=0.3, help="scan sample interval (s)")
     ap.add_argument("--out", default=None)
     ap.add_argument("--debug", action="store_true", help="save mask/segmentation viz")
     args = ap.parse_args()
@@ -207,7 +239,15 @@ def main():
             if src.get("type") == "youtube" and src.get("id"):
                 url = f"https://www.youtube.com/watch?v={src['id']}"
         source = make_source(url=url, video=args.video, clip_start=args.clip_start, height=args.height)
-        img = source.grab(args.at)
+        if args.scan > 0:
+            img, chosen, scores = scan_best_frame(source, args.at, args.scan, args.scan_step, args.count)
+            if args.debug:
+                print(f"scan: chose t={chosen} from {len(scores)} frames")
+                for tt, s, pk in scores:
+                    print(f"   t={tt} score={s} picked={pk}")
+            args.at = chosen  # deep links point at the frame actually used
+        else:
+            img = source.grab(args.at)
 
     h, w = img.shape[:2]
     sx, sy = w / cfg["ref_width"], h / cfg["ref_height"]
