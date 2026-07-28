@@ -92,24 +92,36 @@ player to each `t`.
   3. **Find the near hand**: among bright blobs, pick the one whose aspect ≈ 3N/4
      (a row of N tiles, each 3w:4h) that is **lowest on screen** (nearest the
      camera = the player's own hand, not a wall).
-  4. **Prism front-face reconstruction** (`row_quad`): the row is a cuboid in
-     perspective; take the extreme points, infer the camera side, and rebuild just
-     the front (symbol) face — the far corner is the shape's far-most point, so it
-     reaches the last tile without swallowing the top/end faces.
-  5. **Deskew** the front face to a rectangle, then **split at real seams** via a
-     DP solver (`_dp_borders`): borders sit at the column-darkness valleys (white
+  4. **Edge-based front-face quad** (`row_quad`): a hull/minAreaRect fit collapses
+     on the steep, oblique close-ups, so instead: carve Canny **edges** out of the
+     whiteness mask (`tile_edges`) to snap the hand↔wall fusion into a thin **row
+     strip** used only as a geometric anchor; its two furthest-apart pixels give the
+     row **axis**; rotate that axis to the **Hough** skew angle (found per-seat —
+     handles either camera side, incl. positive tilt); then set the band bottom at
+     the strip's lower edge and its height to a full tile face (`FACE_ASPECT × pitch`)
+     so the quad spans the WHOLE face (number on top, suit glyph below).
+  5. **Deskew** the front face to a rectangle, trim any leading/trailing felt the
+     quad overshot (`_trim_blank_edges`), then **split at real seams** via a DP
+     solver (`_dp_borders`): borders sit at the column-darkness valleys (white
      seams) under a soft equal-spacing prior, so no cell straddles two tiles.
-  6. **Recognize** each upright, normalized cell by **template matching** (the
-     deskew already did ORB's job of normalizing orientation/scale — cross-frame
-     matches land at ~0.95+, so `TILE_THRESH=0.85` cleanly flags unknowns). Unknown
-     tiles escalate as labeled-crop questions.
+  6. **Recognize** each upright, normalized cell by **template matching**
+     (`tiles.classify`) — the deskew normalized orientation/scale, so cross-frame
+     matches land at ~0.95+. References are stored upright and the query is matched
+     both upright AND 180°-rotated, so a tile the player set down **inverted** still
+     resolves. Unknown tiles escalate as labeled-crop questions.
 
-  Validated on the E1 dealer haipai: seeded 10 references from one frame, then read
-  a *different* frame at **10/14** (西 1s 南 2m 9m 9m 6p 8p 發 中), with the 4 souzu
-  correctly flagged as unknown for labeling. `--quad TL,TR,BR,BL` is a manual
-  override; `--seat` sets the seat (nameplate OCR later). `tiles.py` also has an ORB
-  matcher, kept for the rotated tiles of passes 3+. The `tiles/` library grows via
-  the labeling loop.
+  **Multi-frame consensus** (the reliability layer, since no single frame is a clean
+  static haipai): per seat, deskew a *window* of frames, cluster by Hough angle to
+  auto-segment which frames are that seat (no manual per-seat timestamps), reject
+  the occluded/transition outliers, and score cross-frame per-slot agreement — which
+  cleanly ranks footage quality and localizes doubt. Validated across all four seats
+  (North 0.94, South 0.79, West 0.71, East 0.44 — the dealer mid-sort is worst).
+  Seeding is done from the *aligned* frames only (a shifted split is caught by
+  leave-one-out and dropped). Seeded from real broadcast crops, recognition holds at
+  **12/12–14/14 leave-one-out** per seat; the demo-board tile SVGs do NOT work as
+  references (vector-vs-photo domain gap). `tiles/` now covers 28 of 34 tile types
+  and grows via the labeling loop. `--quad TL,TR,BR,BL` is a manual override;
+  `--seat` sets the seat. `tiles.py` also keeps an ORB matcher for passes 3+.
 - **Pass 3 — discards (河).** The genuinely hard one on this broadcast (no stable
   river shot): either heavy per-frame table-registration + replay de-dup, or
   human-assisted entry via deep-linked questions. Deferred pending a decision.

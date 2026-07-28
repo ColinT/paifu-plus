@@ -58,10 +58,16 @@ def whitish(bgr):
     return cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), "uint8"))
 
 
-def close_row(mask):
-    """Bridge the thin dark gaps between adjacent tiles so the row is one blob."""
-    return cv2.morphologyEx(mask, cv2.MORPH_CLOSE,
-                            cv2.getStructuringElement(cv2.MORPH_RECT, (17, 5)))
+def tile_edges(bgr, dilate=5):
+    """Canny edges as carving BARRIERS. Every tile boundary is an edge — crucially
+    the seam where the hand's bright top edge abuts the wall behind it, which has no
+    intensity/colour contrast (both bright) but a clear edge. Carving these out of
+    the whitish mask snaps the vertical hand<->wall bridge; the row is re-bridged
+    horizontally afterwards. Auto thresholds off the frame median (no magic cutoffs)."""
+    g = cv2.GaussianBlur(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY), (3, 3), 0)
+    v = float(np.median(g))
+    e = cv2.Canny(g, int(max(0, 0.66 * v)), int(min(255, 1.33 * v)))
+    return cv2.dilate(e, np.ones((dilate, dilate), "uint8"))
 
 
 def select_haipai(mask, n_tiles, min_long_frac=0.20):
@@ -85,12 +91,20 @@ def select_haipai(mask, n_tiles, min_long_frac=0.20):
         if long < min_long_frac * W:
             continue
         cand.append({"id": i, "ratio": round(long / short, 1), "bottom": bottom,
-                     "long": int(long), "short": int(short)})
+                     "long": int(long), "short": int(short),
+                     "area": int(stats[i, cv2.CC_STAT_AREA])})
     # Aspect ~3N/4 alone also matches the walls, so among aspect-plausible blobs
     # pick the LOWEST one on screen — the near (player's own) hand is closest to
     # the camera, i.e. at the bottom of the frame; walls sit higher up.
     plausible = [c for c in cand if 0.6 * target <= c["ratio"] <= 1.5 * target]
     pool = plausible or cand
+    # Aspect is degenerate for a thin bright LINE (a stick-tray edge below the hand
+    # can match the target ratio and sit lower than the hand). A real N-tile row has
+    # far more AREA than such a sliver, so drop the small blobs before taking the
+    # lowest — the row wins over the line.
+    if pool:
+        amax = max(c["area"] for c in pool)
+        pool = [c for c in pool if c["area"] >= 0.3 * amax] or pool
     best = max(pool, key=lambda c: c["bottom"]) if pool else None
     comp = ((lab == best["id"]).astype("uint8") * 255) if best else None
     return comp, {"target": round(target, 1), "picked": best, "candidates": cand}
@@ -99,56 +113,83 @@ def select_haipai(mask, n_tiles, min_long_frac=0.20):
 CELL_W, CELL_H = 44, 64  # deskewed per-tile size (tile face aspect ~ w<h)
 
 
-def _order_quad(p):
-    """Order 4 points TL,TR,BR,BL (works for a row that is wider than tall)."""
-    p = np.array(p, float)
-    p = p[np.argsort(p[:, 0])]                        # by x: two left, two right
-    (tl, bl) = p[:2][np.argsort(p[:2, 1])]            # left: top, bottom
-    (tr, br) = p[2:][np.argsort(p[2:, 1])]            # right: top, bottom
-    return np.float32([tl, tr, br, bl])
+FACE_ASPECT = 1.45   # deskewed tile-face h/w (CELL_H/CELL_W = 64/44)
 
 
-def _fill_holes(m):
-    """Fill the dark character islands inside the white tile faces."""
-    ff = m.copy()
-    h, w = m.shape
-    cv2.floodFill(ff, np.zeros((h + 2, w + 2), np.uint8), (0, 0), 255)
-    return m | cv2.bitwise_not(ff)
+def _row_strip(bgr, n_tiles):
+    """A thin blob tracing the tile row, used only as a geometric ANCHOR (axis +
+    extent), never read. whitish minus dilated Canny edges snaps the hand<->wall
+    fusion (their contact is bright, so only an edge separates them); a wide, 1px
+    tall close re-bridges the tiles ALONG the row without re-linking the wall above.
+    select_haipai picks the row; a final close solidifies it. Returns (strip, cand)."""
+    m = whitish(bgr)
+    m[tile_edges(bgr) > 0] = 0
+    m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1)))
+    m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), "uint8"))
+    comp, cand = select_haipai(m, n_tiles)
+    if comp is None:
+        return None, cand
+    strip = cv2.morphologyEx(comp, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (15, 9)))
+    return strip, cand
 
 
-def row_quad(mask, n_tiles):
-    """Reconstruct the tile row's FRONT (symbol) face as a rectangular prism seen
-    in perspective — a bounding rectangle would swallow the top and end faces.
+def _hough_angle(bgr, bbox):
+    """Length-weighted mean angle of the near-horizontal Canny lines in bbox — the
+    row's true skew, found per-seat (handles either camera side, incl. positive
+    tilt when the camera sits opposite)."""
+    x0, y0, x1, y1 = bbox
+    g = cv2.GaussianBlur(cv2.cvtColor(bgr[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY), (3, 3), 0)
+    v = float(np.median(g))
+    edges = cv2.Canny(g, int(max(0, 0.66 * v)), int(min(255, 1.33 * v)))
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 360, threshold=50,
+                            minLineLength=int(0.30 * (x1 - x0)), maxLineGap=12)
+    if lines is None:
+        return None
+    angs, wts = [], []
+    for ax, ay, bx, by in lines.reshape(-1, 4):
+        a = (np.degrees(np.arctan2(float(by - ay), float(bx - ax))) + 180) % 180
+        if a > 90:
+            a -= 180
+        if abs(a) < 40:
+            angs.append(a); wts.append(np.hypot(bx - ax, by - ay))
+    return float(np.average(angs, weights=wts)) if angs else None
 
-    Clean the shape (fill character holes, shave the thin inter-tile fingers),
-    then: the lowest point is the near front-bottom corner and the highest is the
-    opposite (back-top) corner. Which side the lowest sits relative to the highest
-    tells us the camera side; the near END face there gives the prism's height and
-    thickness. From those + the two opposite corners we rebuild the front face,
-    with equal-height left/right edges."""
-    m = _fill_holes(mask)
-    m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
-    nc, lab, st, _ = cv2.connectedComponentsWithStats(m, 8)
-    if nc > 1:
-        m = ((lab == 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))) * 255).astype("uint8")
-    found = cv2.findNonZero(m)
-    pts = (found if found is not None else cv2.findNonZero(mask)).reshape(-1, 2).astype(float)
 
-    p_low = pts[np.argmax(pts[:, 1])]        # near front-bottom corner
-    p_high = pts[np.argmin(pts[:, 1])]       # topmost — only tells us the camera side
-    cam_left = p_low[0] < p_high[0]
-    # near END face (on the low side) -> the prism height (tile face height)
-    edge_x = pts[:, 0].min() if cam_left else pts[:, 0].max()
-    col = pts[np.abs(pts[:, 0] - edge_x) <= 3]
-    H = col[:, 1].max() - col[:, 1].min()
-    # the far front-top corner is the FAR-most point of the shape (rightmost when
-    # the camera is left) — that sits on the last tile's top corner, so no
-    # extrapolation is needed; the far bottom is one tile-height straight down.
-    far_top = pts[np.argmax(pts[:, 0])] if cam_left else pts[np.argmin(pts[:, 0])]
-    ft_near = p_low + [0, -H]                 # front-top on the near end
-    fb_far = far_top + [0, H]                 # front-bottom on the far end
-    quad = _order_quad(np.array([ft_near, far_top, fb_far, p_low]))
-    return quad, (float(quad[:, 0].min()), float(quad[:, 0].max()))
+def row_quad(bgr, n_tiles):
+    """Front-face quad of the tile row, built from EDGES — robust on the steep,
+    oblique close-ups where a hull/minAreaRect fit collapses. (1) the row strip's
+    two furthest-apart pixels give the row AXIS; (2) rotate it about its midpoint to
+    the Hough skew (the strip's own extremes read a touch flat); (3) the band BOTTOM
+    is the strip's lower extent and its HEIGHT is a full tile face (FACE_ASPECT *
+    pitch), so the quad spans the WHOLE face (number on top, suit glyph below) rather
+    than the strip's thin band. Returns (quad TL,TR,BR,BL, strip, cand) or
+    (None, None, cand)."""
+    strip, cand = _row_strip(bgr, n_tiles)
+    if strip is None:
+        return None, None, cand
+    pts = cv2.findNonZero(strip).reshape(-1, 2).astype(float)
+    hull = cv2.convexHull(pts.astype(np.float32)).reshape(-1, 2).astype(float)
+    d2 = ((hull[:, None] - hull[None]) ** 2).sum(-1)
+    i, j = np.unravel_index(int(np.argmax(d2)), d2.shape)
+    a, b = hull[i], hull[j]
+    if a[0] > b[0]:
+        a, b = b, a
+    mid, L = (a + b) / 2, float(np.hypot(*(b - a)))
+    xs, ys = pts[:, 0], pts[:, 1]
+    pad = 20
+    bbox = (max(0, int(xs.min() - pad)), max(0, int(ys.min() - pad)),
+            min(bgr.shape[1], int(xs.max() + pad)), min(bgr.shape[0], int(ys.max() + pad)))
+    ang = _hough_angle(bgr, bbox)
+    if ang is None:
+        ang = np.degrees(np.arctan2(b[1] - a[1], b[0] - a[0]))
+    th = np.radians(ang); u = np.array([np.cos(th), np.sin(th)])
+    a2, b2 = mid - (L / 2) * u, mid + (L / 2) * u
+    slope = np.tan(th)
+    dy = float((ys - (a2[1] + slope * (xs - a2[0]))).max())     # strip's lower extent
+    face = FACE_ASPECT * (L / n_tiles)
+    top, bot = np.array([0.0, dy - face]), np.array([0.0, dy])
+    quad = np.float32([a2 + top, b2 + top, b2 + bot, a2 + bot])  # TL,TR,BR,BL
+    return quad, strip, cand
 
 
 def segment_tiles(crop_bgr, n_tiles):
@@ -157,11 +198,9 @@ def segment_tiles(crop_bgr, n_tiles):
     Warping the row's quadrilateral to a rectangle removes tilt AND perspective
     in one step, so the split is a trivial equal division and every tile crop is
     upright at a normalized scale (much friendlier to recognition)."""
-    mask = close_row(whitish(crop_bgr))
-    comp, cand = select_haipai(mask, n_tiles)
-    if comp is None:
-        return [], mask, None, None, cand
-    quad, _ = row_quad(comp, n_tiles)
+    quad, comp, cand = row_quad(crop_bgr, n_tiles)
+    if quad is None:
+        return [], None, None, None, cand
     crops, warp = deskew_split(crop_bgr, quad, n_tiles)
     return crops, comp, quad, warp, cand
 
@@ -196,6 +235,22 @@ def _dp_borders(dark, n_tiles, lam=2.0):
     return [0] + sorted(b) + [W]
 
 
+def _trim_blank_edges(warp):
+    """Drop leading/trailing FELT columns the quad overshot into, so the n-split
+    isn't wasted on an empty slot (e.g. a blank left of the first tile). Only edge
+    runs well below tile whiteness are shaved — interior dark symbol columns and
+    clean edge-to-edge rows are left untouched."""
+    H, W = warp.shape[:2]
+    colw = warp.min(axis=2)[int(0.25 * H):int(0.75 * H)].mean(axis=0).astype(float)
+    thr = 0.55 * float(np.percentile(colw, 80))    # tile columns >> felt columns
+    lo, hi = 0, W - 1
+    while lo < hi and colw[lo] < thr:
+        lo += 1
+    while hi > lo and colw[hi] < thr:
+        hi -= 1
+    return warp[:, lo:hi + 1] if hi - lo > 0.4 * W else warp
+
+
 def split_by_symbols(warp, n_tiles):
     """Cut the deskewed strip at the real tile seams, not on a blind even grid.
 
@@ -204,6 +259,7 @@ def split_by_symbols(warp, n_tiles):
     dips at the white seams between tiles and rises over the symbols; a DP solver
     (`_dp_borders`) places the n_tiles-1 borders at those valleys under a soft
     equal-spacing prior."""
+    warp = _trim_blank_edges(warp)
     H, W = warp.shape[:2]
     gray = cv2.cvtColor(warp, cv2.COLOR_BGR2GRAY).astype(float)
     dark = 255 - gray[int(0.18 * H):int(0.82 * H), :].mean(axis=0)

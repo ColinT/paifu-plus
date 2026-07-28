@@ -53,13 +53,17 @@ def _corr(a, b):
 
 
 def classify(crop_bgr, lib, thresh=0.5):
-    """(code, score). code is None (unknown) when the best score < thresh."""
+    """(code, score). code is None (unknown) when the best score < thresh.
+
+    References are stored UPRIGHT; the query is matched both upright AND rotated
+    180deg so a tile the player set down inverted (seen in play) still resolves to
+    its upright reference."""
     if not lib or crop_bgr is None or crop_bgr.size == 0:
         return None, 0.0
-    q = preprocess(crop_bgr)
+    queries = (preprocess(crop_bgr), preprocess(cv2.rotate(crop_bgr, cv2.ROTATE_180)))
     best_code, best = None, -1.0
     for code, refs in lib.items():
-        s = max(_corr(q, r) for r in refs)
+        s = max(_corr(q, r) for q in queries for r in refs)
         if s > best:
             best, best_code = s, code
     return (best_code if best >= thresh else None), round(best, 3)
