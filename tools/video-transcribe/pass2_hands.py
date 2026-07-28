@@ -82,13 +82,14 @@ def select_haipai(mask, n_tiles, min_long_frac=0.20):
         if long < min_long_frac * W:
             continue
         cand.append({"id": i, "ratio": round(long / short, 1),
-                     "long": int(long), "short": int(short)})
+                     "long": int(long), "short": int(short),
+                     "bottom": int(stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT])})
     # Aspect ~3N/4 alone also matches the walls, so among aspect-plausible blobs
-    # pick the one with the LARGEST tiles (short side) — the near hand is closest
-    # to the camera, so its tiles are biggest.
+    # pick the LOWEST one on screen — the near (player's own) hand is closest to
+    # the camera, i.e. at the bottom of the frame; walls sit higher up.
     plausible = [c for c in cand if 0.6 * target <= c["ratio"] <= 1.5 * target]
     pool = plausible or cand
-    best = max(pool, key=lambda c: c["short"]) if pool else None
+    best = max(pool, key=lambda c: c["bottom"]) if pool else None
     comp = ((lab == best["id"]).astype("uint8") * 255) if best else None
     return comp, {"target": round(target, 1), "picked": best, "candidates": cand}
 
@@ -126,20 +127,18 @@ def row_quad(mask, n_tiles):
         if len(ys):
             xr.append(x); yt.append(ys[0]); yb.append(ys[-1])
     xr, yt, yb = np.array(xr, float), np.array(yt, float), np.array(yb, float)
-    # Keep columns whose height is near the median (the tile row) and fit both
-    # edges + the x-extent from those. NOTE: this reduces — but does not fully
-    # solve — contamination from a reaching arm, which can form its own
-    # plausible-height band beside the row on the full frame. For a clean result
-    # use --quad; robust auto-isolation of the arm needs skin removal or a learned
-    # detector (see README).
+    xs, xe = float(xr.min()), float(xr.max())        # the blob IS the near-hand row
+    mb, bb = _fit_line(xr, yb)                        # bottom edge (clean, full row)
+    # Fit the TOP edge only over MID-height columns: too tall = a merged arm, too
+    # short = a tile face under-captured where residual ghost dimmed it. Excluding
+    # both and extrapolating the line recovers the true (converging) top edge.
     h = yb - yt
-    good = h <= 1.5 * np.median(h)
-    if good.sum() < 3:
-        good = np.ones_like(h, bool)
-    xg = xr[good]
-    xs, xe = float(xg.min()), float(xg.max())
-    mt, bt = _fit_line(xg, yt[good])
-    mb, bb = _fit_line(xg, yb[good])
+    hmed = np.median(h)
+    good = (h >= 0.6 * hmed) & (h <= 1.5 * hmed)
+    if good.sum() >= 3:
+        mt, bt = _fit_line(xr[good], yt[good])
+    else:
+        mt, bt = mb, bb - hmed                        # fallback: parallel to bottom
     quad = np.float32([[xs, mt * xs + bt], [xe, mt * xe + bt],
                        [xe, mb * xe + bb], [xs, mb * xs + bb]])
     return quad, (xs, xe)
@@ -169,33 +168,38 @@ def deskew_split(img, quad, n_tiles):
     return [warp[:, i * CELL_W:(i + 1) * CELL_W] for i in range(n_tiles)], warp
 
 
-def frame_score(img, n_tiles):
-    """How cleanly this frame's haipai segments. The hand is a MOVING object and
-    the tiles are ~static, so across nearby frames the frame where the hand is
-    clear of the row is the one whose picked blob is most row-shaped: aspect
-    closest to 3N/4 (a touching hand merges in and distorts the ratio). Returns
-    (score, info); higher is cleaner."""
-    comp, info = select_haipai(close_row(whitish(img)), n_tiles)
-    if comp is None or info.get("picked") is None:
-        return -1e9, info
-    return -abs(info["picked"]["ratio"] - info["target"]), info
+def _motion_band(shape):
+    """Lower-centre region where the near hand sits (relative to frame size)."""
+    h, w = shape[:2]
+    return (slice(int(0.45 * h), int(0.78 * h)), slice(int(0.28 * w), int(0.88 * w)))
 
 
-def scan_best_frame(source, at, half, step, n_tiles):
-    """Sample frames in [at-half, at+half] every `step` s; return (best_img, t,
-    scores). Picks the cleanest by frame_score — a temporal, colour-free way to
-    catch a moment when the hand isn't touching the tiles."""
+def scan_median(source, at, half, step, n_tiles):
+    """Colour-free hand removal via the temporal dimension.
+
+    The hand MOVES and the tiles are ~static, so the per-pixel median over nearby
+    frames averages the transient hand away and keeps the tiles. We sample a
+    window around the operator's `at` (a hint, not gospel), measure per-frame
+    motion (deviation from the median) in the near-hand band, keep the STILL
+    frames, and return the median over just those — a clean, hand-free image to
+    segment. Robust to gloves / any skin tone (unlike skin-colour subtraction).
+
+    Returns (median_img, best_t, per-frame motions)."""
     times, t = [], at - half
     while t <= at + half + 1e-6:
         times.append(round(t, 2)); t += step
-    best, scores = None, []
-    for tt in times:
-        img = source.grab(tt)
-        s, info = frame_score(img, n_tiles)
-        scores.append((tt, round(s, 1), info.get("picked")))
-        if best is None or s > best[1]:
-            best = (img, s, tt)
-    return best[0], best[2], scores
+    imgs = [source.grab(tt) for tt in times]
+    stack = np.stack(imgs).astype(np.float32)
+    med0g = cv2.cvtColor(np.median(stack, axis=0).astype(np.uint8), cv2.COLOR_BGR2GRAY).astype(np.float32)
+    band = _motion_band(imgs[0].shape)
+    motions = [float(np.abs(cv2.cvtColor(im, cv2.COLOR_BGR2GRAY).astype(np.float32) - med0g)[band].mean())
+               for im in imgs]
+    lo, hi = min(motions), np.median(motions)
+    thr = lo + 0.5 * (hi - lo)                       # keep the low-motion (settled) frames
+    still = [im for im, m in zip(imgs, motions) if m <= thr]
+    med = np.median(np.stack(still).astype(np.float32) if len(still) >= 3 else stack, axis=0)
+    best_t = times[int(np.argmin(motions))]
+    return med.astype(np.uint8), best_t, list(zip(times, [round(m, 1) for m in motions]))
 
 
 def read_hand(lib_orb, crop_bgr, n_tiles):
@@ -240,12 +244,12 @@ def main():
                 url = f"https://www.youtube.com/watch?v={src['id']}"
         source = make_source(url=url, video=args.video, clip_start=args.clip_start, height=args.height)
         if args.scan > 0:
-            img, chosen, scores = scan_best_frame(source, args.at, args.scan, args.scan_step, args.count)
+            img, chosen, motions = scan_median(source, args.at, args.scan, args.scan_step, args.count)
             if args.debug:
-                print(f"scan: chose t={chosen} from {len(scores)} frames")
-                for tt, s, pk in scores:
-                    print(f"   t={tt} score={s} picked={pk}")
-            args.at = chosen  # deep links point at the frame actually used
+                print(f"scan: temporal median over {len(motions)} frames; stillest t={chosen}")
+                for tt, m in motions:
+                    print(f"   t={tt} motion={m}")
+            args.at = chosen  # deep links point at the settled moment
         else:
             img = source.grab(args.at)
 
