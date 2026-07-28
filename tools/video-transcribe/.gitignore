@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+# local media / working artifacts — never commit downloaded video or frames
+*.mp4
+*.webm
+*.mkv
+*.png
+*.jpg
+clips/
+frames/
+out/

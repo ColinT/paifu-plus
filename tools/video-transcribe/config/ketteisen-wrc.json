@@ -1,0 +1,18 @@
+{
+  "broadcast": "ketteisen-wrc",
+  "note": "最高位戦/WRC playoff broadcast (youtube zzLJcZeDdnM). 30k start. Regions in the 1280x720 reference frame; scaled to the actual frame at runtime.",
+  "ref_width": 1280,
+  "ref_height": 720,
+  "start_score": 30000,
+  "source": { "type": "youtube", "id": "zzLJcZeDdnM" },
+  "regions": {
+    "round":       [28, 50, 135, 60],
+    "honba":       [207, 57, 18, 25],
+    "sticks":      [207, 79, 18, 25],
+    "dora":        [231, 52, 53, 56],
+    "jp_names":    [150, 606, 1100, 34],
+    "scores":      [150, 624, 1100, 44],
+    "romaji":      [150, 686, 1100, 30],
+    "dealer_line": [150, 676, 1100, 10]
+  }
+}

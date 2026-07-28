@@ -1,0 +1,4 @@
+# Python 3.10+. External tools (not pip): ffmpeg on PATH; yt-dlp for URL sources.
+easyocr>=1.7
+opencv-python-headless>=4.8
+numpy>=1.24
