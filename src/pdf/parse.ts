@@ -237,6 +237,30 @@ export function parseKyoku(page: RawPage, opts: ParseOptions = {}): Kyoku {
     // Calls: landscape tiles in the final row (chi/pon/minkan) and 4-of-a-kind (ankan).
     const calls = detectCalls(finalRow?.cells ?? [], markerItems);
 
+    // Call timing: a ポン / チー label sits just above the ツモ row at the column
+    // where the call was made. That column's ツモ tile is the *claimed* tile, not
+    // a wall draw — so mark that turn as a called turn (drop its draw) and set the
+    // call's turn index. Without this, every call defaults to turn 0 (≈ the
+    // caller's first move) instead of when it actually happened.
+    const drawOffset = drawCells.length - tsumoCells.length; // 1 if the dealer's 14th was prepended
+    const callMarkers = markerItems
+      .filter((t) => tsumoRow && haipaiRow && t.y > tsumoRow.y && t.y < haipaiRow.y && /ポ|チ/.test(t.str.replace(/\s/g, '')))
+      .sort((a, b) => a.x - b.x);
+    const usedCall = new Set<Call>();
+    for (const mk of callMarkers) {
+      let col = -1, bestD = Infinity;
+      tsumoCells.forEach((c, i) => { const d = Math.abs(c.x - mk.x); if (d < bestD) { bestD = d; col = i; } });
+      const cell = tsumoCells[col];
+      if (!cell || cell.tile === null) continue; // an arrow column isn't a claimed tile
+      const ti = col + drawOffset;
+      const call = calls.find((c) => c.type !== 'ankan' && !usedCall.has(c) && c.calledTile === cell.tile)
+        ?? calls.find((c) => c.type !== 'ankan' && !usedCall.has(c));
+      if (!call || !turns[ti]) continue;
+      usedCall.add(call);
+      call.turn = ti;
+      if (turns[ti].draw !== undefined) turns[ti] = { ...turns[ti], draw: undefined }; // claimed, not drawn
+    }
+
     players.push({
       seat: band.seat,
       name: band.name,
