@@ -81,32 +81,35 @@ player to each `t`.
   **score-change** events, then classifies the net round result (tsumo/ron/draw)
   from the deltas. No felt CV. Yaku/han-fu aren't on the overlay → left as a
   question (or a later result-graphic reader).
-- **Pass 2 — hands (haipai / final).** Segmentation built → `pass2_hands.py` (+ ORB
-  matcher in `tiles.py`). The close-ups are tilted with perspective foreshortening,
-  so we **deskew first**: fit the row's 4 corners, warp that quadrilateral to a
-  rectangle (removing tilt AND perspective), then — since it's a haipai with a
-  **known N** (14 dealer / 13 else) — split into N equal columns. Every cell comes
-  out upright at a normalized scale, then classified via **ORB**; unknowns escalate
-  as labeled crops. Corners: `--quad TL,TR,BR,BL` (operator-anchored, reliable) is
-  the recommended path. Auto-detection runs on the **full frame** (no crop — the
-  haipai fills much of it) and picks the haipai among bright blobs by **shape**: a
-  row of N tiles (3 wide : 4 high each) has overall aspect ~3N/4, and among
-  aspect-plausible blobs the near hand is the one with the **largest tiles**
-  (biggest short side, closest to camera). The mask is **adaptive/normalized**
-  (`whitish`): whiteness = `min(R,G,B)` (rejects the bluish felt and orange edge),
-  CLAHE-normalized, thresholded by the brightest class of a 3-way multi-Otsu — no
-  fixed 0-255 cutoffs, so shadowed tiles survive and the felt is excluded. This
-  finds the near hand. The reaching-hand/arm contamination is removed **temporally**
-  (`--scan`): scrub a window around the operator's timestamp, and because the hand
-  MOVES while the tiles are ~static, take the per-pixel **temporal median** over the
-  low-motion frames — the hand averages out (colour-free, so robust to gloves / any
-  skin tone). The row quad is then a **convex hull + `minAreaRect`** best-fit
-  (parallel equal-length sides, so the right edge can't collapse on the
-  colour-glyph tiles 發/中 the way per-column edge-fitting did). End result on the
-  E1 dealer haipai: a clean, hand-free, full-length deskew with all **14 tiles**
-  correctly split — fully automatic. `--quad` (operator corners) remains as an
-  override. Recognition needs the `tiles/` library grown via the labeling loop;
-  seat id is `--seat` for now.
+- **Pass 2 — hands (haipai / final).** Working end to end → `pass2_hands.py`. The
+  full auto chain, from a YouTube URL + a rough timestamp:
+  1. **Temporal hand removal** (`--scan`): scrub a window; the hand MOVES while the
+     tiles are ~static, so the per-pixel **temporal median** over the low-motion
+     frames averages the hand out (colour-free → robust to gloves / any skin tone).
+  2. **Adaptive whiteness mask** (`whitish`): whiteness = `min(R,G,B)` (rejects the
+     bluish felt and orange edge), CLAHE-normalized, thresholded by the brightest
+     class of a 3-way multi-Otsu — no fixed cutoffs, felt excluded.
+  3. **Find the near hand**: among bright blobs, pick the one whose aspect ≈ 3N/4
+     (a row of N tiles, each 3w:4h) that is **lowest on screen** (nearest the
+     camera = the player's own hand, not a wall).
+  4. **Prism front-face reconstruction** (`row_quad`): the row is a cuboid in
+     perspective; take the extreme points, infer the camera side, and rebuild just
+     the front (symbol) face — the far corner is the shape's far-most point, so it
+     reaches the last tile without swallowing the top/end faces.
+  5. **Deskew** the front face to a rectangle, then **split at real seams** via a
+     DP solver (`_dp_borders`): borders sit at the column-darkness valleys (white
+     seams) under a soft equal-spacing prior, so no cell straddles two tiles.
+  6. **Recognize** each upright, normalized cell by **template matching** (the
+     deskew already did ORB's job of normalizing orientation/scale — cross-frame
+     matches land at ~0.95+, so `TILE_THRESH=0.85` cleanly flags unknowns). Unknown
+     tiles escalate as labeled-crop questions.
+
+  Validated on the E1 dealer haipai: seeded 10 references from one frame, then read
+  a *different* frame at **10/14** (西 1s 南 2m 9m 9m 6p 8p 發 中), with the 4 souzu
+  correctly flagged as unknown for labeling. `--quad TL,TR,BR,BL` is a manual
+  override; `--seat` sets the seat (nameplate OCR later). `tiles.py` also has an ORB
+  matcher, kept for the rotated tiles of passes 3+. The `tiles/` library grows via
+  the labeling loop.
 - **Pass 3 — discards (河).** The genuinely hard one on this broadcast (no stable
   river shot): either heavy per-frame table-registration + replay de-dup, or
   human-assisted entry via deep-linked questions. Deferred pending a decision.

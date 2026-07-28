@@ -253,10 +253,16 @@ def scan_median(source, at, half, step, n_tiles):
     return med.astype(np.uint8), best_t, list(zip(times, [round(m, 1) for m in motions]))
 
 
-def read_hand(lib_orb, crop_bgr, n_tiles):
+# Deskewed cells are upright and fixed-scale, so the normalized-correlation
+# template matcher (not ORB) is the right classifier — cross-frame matches land
+# at ~0.95+, wrong tiles well below, so this threshold cleanly flags unknowns.
+TILE_THRESH = 0.85
+
+
+def read_hand(lib, crop_bgr, n_tiles):
     """Classify each of the n_tiles deskewed cells. Returns (codes, crops, meta)."""
     crops, mask, quad, warp, cand = segment_tiles(crop_bgr, n_tiles)
-    codes = [tiles.classify_orb(t, lib_orb) for t in crops]
+    codes = [tiles.classify(t, lib, thresh=TILE_THRESH) for t in crops]
     return codes, crops, {"quad": quad, "warp": warp, "cand": cand}
 
 
@@ -306,7 +312,7 @@ def main():
 
     h, w = img.shape[:2]
     sx, sy = w / cfg["ref_width"], h / cfg["ref_height"]
-    lib_orb = tiles.load_library_orb(args.tiles)
+    lib = tiles.load_library(args.tiles)
     hand_crop = None
 
     if args.quad:
@@ -314,7 +320,7 @@ def main():
         p = [float(v) for v in args.quad.split(",")]
         quad = np.float32([[p[i] * sx, p[i + 1] * sy] for i in range(0, 8, 2)])
         tile_crops, warp = deskew_split(img, quad, args.count)
-        codes = [tiles.classify_orb(t, lib_orb) for t in tile_crops]
+        codes = [tiles.classify(t, lib, thresh=TILE_THRESH) for t in tile_crops]
         meta = {"quad": quad, "warp": warp}
     else:
         # No crop by default — the haipai fills much of the frame, and a fixed box
@@ -326,7 +332,7 @@ def main():
             hand_crop = crop(img, R)
         else:
             hand_crop = img
-        codes, tile_crops, meta = read_hand(lib_orb, hand_crop, args.count)
+        codes, tile_crops, meta = read_hand(lib, hand_crop, args.count)
         if args.debug:
             print(f"debug: aspect target={meta['cand']['target']} picked={meta['cand']['picked']}")
             for c in meta["cand"]["candidates"]:
@@ -335,13 +341,13 @@ def main():
     out_dir = os.path.dirname(args.out) if args.out else "out"
     unlabeled = os.path.join(out_dir, "unlabeled")
     hand, questions = [], []
-    for i, ((code, inliers), tc) in enumerate(zip(codes, tile_crops)):
+    for i, ((code, score), tc) in enumerate(zip(codes, tile_crops)):
         if code is None:
             os.makedirs(unlabeled, exist_ok=True)
             p = os.path.join(unlabeled, f"hand_{args.seat}_{i}.png")
             cv2.imwrite(p, tc)
             questions.append({"kind": "tile", "seat": args.seat, "index": i,
-                              "prompt": f"Unrecognised hand tile #{i} (ORB {inliers}). "
+                              "prompt": f"Unrecognised hand tile #{i} (best match {score}). "
                                         f"Label: python tiles.py add --code <t> --image {p}",
                               "link": source_link(cfg, args.at) if args.at else None})
             hand.append(None)
