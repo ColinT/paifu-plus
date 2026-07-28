@@ -109,6 +109,25 @@ then ffmpeg range-seeks one frame over HTTP (~6s/frame, peak disk ~one frame). A
 format that won't range-seek falls back to a ~2s section (a few MB, auto-deleted).
 Local files are also supported (`--video`), mainly for offline calibration.
 
+## Tile recognition (`tiles.py`)
+
+Text-OCR can't read tile art, so tiles are matched against a **reference library**
+`tiles/<code>/<n>.png` (tenhou codes: 11-19 man, 21-29 pin, 31-39 sou, 41-47
+honor). `classify()` scores a crop by normalized correlation against every
+reference; below threshold it returns unknown so the caller asks a question.
+
+The library is **self-improving**: an unknown-tile question saves the crop under
+`out/unlabeled/`, and answering it feeds the crop back as a new reference —
+
+```bash
+python tiles.py add --code 17 --image out/unlabeled/dora_690.png   # 17 = 7m
+python tiles.py list
+```
+
+Pass 0 uses this for the dora indicator (upright, consistent scale — ideal for
+template matching). Rotated/scaled tiles in hands and rivers (passes 2/3) will
+layer a scale/rotation-invariant matcher (ORB) over the **same** library.
+
 ## Usage
 
 ```bash

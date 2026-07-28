@@ -26,18 +26,12 @@ import os
 import cv2
 import numpy as np
 
+import tiles
 from frames import make_source
 
 # ---- tile / round vocab ---------------------------------------------------
 
 WINDS = {"東": 0, "南": 4, "西": 8, "北": 12}  # base tenhou round index per wind
-DIGITS = {"１": "1", "２": "2", "３": "3", "４": "4", "0": "0"}  # full-width fixups
-
-# man/pin/sou face -> tenhou tile code base; suit char -> tens digit
-NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
-SUIT = {"萬": 10, "万": 10, "筒": 20, "索": 30}
-HONOR = {"東": 41, "南": 42, "西": 43, "北": 44, "白": 45, "發": 46, "发": 46, "中": 47}
-TILE_ALLOW = "".join(list(NUM) + list(SUIT) + list(HONOR))
 
 
 # ---- frame + OCR helpers --------------------------------------------------
@@ -119,21 +113,12 @@ def parse_int(reader, img, region):
     return (int(digits) if digits else None), conf, text
 
 
-def parse_dora(reader, img, region):
-    """Best-effort: text-OCR the dora indicator tile. Man/honor faces sometimes
-    read; pin/sou dot-patterns generally do not (that needs the tile classifier
-    shared with pass 2/3). Returns (tile_code|None, conf, raw)."""
-    toks = ocr_region(reader, img, region, allowlist=TILE_ALLOW, upscale=4)
-    text = "".join(t for _, _, t, _ in toks)
-    conf = max([c for *_, c in toks], default=0.0)
-    for ch in text:  # honor first (single char)
-        if ch in HONOR:
-            return HONOR[ch], conf, text
-    num = next((ch for ch in text if ch in NUM), None)
-    suit = next((ch for ch in text if ch in SUIT), None)
-    if num and suit:
-        return SUIT[suit] + NUM[num], conf, text
-    return None, conf, text
+def parse_dora(lib, img, region):
+    """Classify the dora indicator tile against the reference library.
+    Returns (tile_code|None, score, crop_bgr). Unknown -> None (escalate)."""
+    crop_bgr = crop(img, region)
+    code, score = tiles.classify(crop_bgr, lib)
+    return code, score, crop_bgr
 
 
 def parse_scores(reader, img, region):
@@ -180,7 +165,7 @@ def source_link(cfg, abs_t):
     return {"file": src.get("file"), "offsetSec": round(abs_t, 2)}
 
 
-def read_overlay(reader, reader_en, cfg, img, abs_t):
+def read_overlay(reader, reader_en, lib, cfg, img, abs_t, unlabeled_dir=None):
     h, w = img.shape[:2]
     R = {k: scale_region(v, w, h, cfg["ref_width"], cfg["ref_height"])
          for k, v in cfg["regions"].items()}
@@ -204,9 +189,15 @@ def read_overlay(reader, reader_en, cfg, img, abs_t):
     if sticks is None:
         ask("sticks", "Riichi-stick count unreadable.")
 
-    dora, dc, draw = parse_dora(reader, img, R["dora"])
-    if dora is None or dc < 0.4:
-        ask("dora", f"Dora indicator unreadable (OCR='{draw}') — enter the tile.")
+    dora, dc, dcrop = parse_dora(lib, img, R["dora"])
+    if dora is None:
+        label_path = None
+        if unlabeled_dir:
+            os.makedirs(unlabeled_dir, exist_ok=True)
+            label_path = os.path.join(unlabeled_dir, f"dora_{int(abs_t)}.png")
+            cv2.imwrite(label_path, dcrop)
+        hint = f" Then teach it: python tiles.py add --code <t> --image {label_path}" if label_path else ""
+        ask("dora", f"Dora indicator unrecognized (best score {dc}) — enter the tile.{hint}")
 
     names, nconf = parse_names(reader, img, R["jp_names"])          # kanji: ja model
     scores, sconf = parse_scores(reader_en, img, R["scores"])       # digits: en model
@@ -255,7 +246,7 @@ def read_overlay(reader, reader_en, cfg, img, abs_t):
             "scores": [round(c, 2) for c in sconf],
         },
         "questions": questions,
-        "raw": {"round": rraw, "dora": draw, "red_counts": red_counts},
+        "raw": {"round": rraw, "dora_score": dc, "red_counts": red_counts},
     }
 
 
@@ -269,6 +260,7 @@ def main():
     ap.add_argument("--clip-start", type=float, default=0.0,
                     help="for --video only: the clip's start offset in the source")
     ap.add_argument("--height", type=int, default=720, help="stream height to fetch")
+    ap.add_argument("--tiles", default="tiles", help="tile reference library dir")
     ap.add_argument("--out", default=None)
     ap.add_argument("--dump-regions", action="store_true",
                     help="save each crop under out/regions_<t>/ for calibration, then exit")
@@ -300,6 +292,9 @@ def main():
             print("dumped", d)
         return
 
+    lib = tiles.load_library(args.tiles)
+    unlabeled = os.path.join(os.path.dirname(args.out), "unlabeled") if args.out else None
+
     import easyocr
     reader = easyocr.Reader(["ja"], gpu=args.gpu, verbose=False)      # kanji fields
     reader_en = easyocr.Reader(["en"], gpu=args.gpu, verbose=False)   # digits + romaji
@@ -307,7 +302,7 @@ def main():
     results = []
     for t in args.at:
         img = source.grab(t)
-        results.append(read_overlay(reader, reader_en, cfg, img, t))
+        results.append(read_overlay(reader, reader_en, lib, cfg, img, t, unlabeled))
 
     payload = {"broadcast": cfg.get("broadcast"), "rounds": results}
     text = json.dumps(payload, ensure_ascii=False, indent=2)

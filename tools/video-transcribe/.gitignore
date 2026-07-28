@@ -9,3 +9,6 @@ __pycache__/
 clips/
 frames/
 out/
+# ...but the tile reference library IS committed data (like the PDF tile hashes)
+!tiles/
+!tiles/**
