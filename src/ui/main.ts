@@ -628,6 +628,36 @@ function importRound(game: Game, targetRound: number) {
   renderAll();
 }
 
+/** Append a saved record's round(s) to the current game, renumbered to follow —
+ *  lets you compile separate round files into one hanchan. */
+function importSaveAsRounds(id: string, title: string) {
+  const rec = readSave(id);
+  if (!rec) { alert('That save could not be read.'); return; }
+  const incoming = rec.game.kyokus;
+  if (!incoming.length) { alert(`“${title}” has no rounds to add.`); return; }
+  // A blank working game (nothing transcribed) has no rounds to follow, so the
+  // first added record becomes East 1 rather than appending after an empty round.
+  const kyokus = fullStream().trim() ? [...realGame().kyokus] : [];
+  let next = kyokus.length ? Math.min(15, kyokus[kyokus.length - 1].round + 1) : 0;
+  let lastAdded: Kyoku | null = null;
+  for (const src of incoming) {
+    const k: Kyoku = { ...src, round: next };   // renumber to append in order
+    const at = kyokus.findIndex((x) => x.round === next);
+    if (at >= 0) kyokus[at] = k; else kyokus.push(k);
+    lastAdded = k;
+    next = Math.min(15, next + 1);
+  }
+  kyokus.sort((a, b) => a.round - b.round || a.honba - b.honba);
+  const merged: Game = { ...state.game, kyokus };
+  pendingQuickEdit = false; turnState = null;
+  let stream = ''; try { stream = gameToStream(merged); } catch { /* keep authoritative */ }
+  adoptGame(merged, stream);
+  state.activeKyoku = lastAdded ? Math.max(0, kyokus.indexOf(lastAdded)) : 0;
+  refreshActiveRoundView();
+  renderAll();
+  flash(`Added ${incoming.length} round${incoming.length === 1 ? '' : 's'} from “${title}”`);
+}
+
 function openImportDialog() {
   // Scope: replace the whole game, or slot one round into the current game.
   let scope: Scope = 'game';
@@ -661,6 +691,19 @@ function openImportDialog() {
   drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); const f = (e as DragEvent).dataTransfer?.files?.[0]; if (f) void handleFile(f); });
 
   const paste = el('textarea', { class: 'field-control mono paste-json', spellcheck: 'false', placeholder: '…or paste Tenhou/6 JSON here' }) as HTMLTextAreaElement;
+
+  // Add a saved record's round(s) to the current game — compile separate round
+  // files into one hanchan. Appends after the current last round.
+  const saves = listSaves();
+  const saveSel = el('select', { class: 'field-control round-sel grow' }, saves.map((s) => el('option', { value: s.id }, [`${s.title || 'Untitled game'} · ${s.rounds}r`]))) as HTMLSelectElement;
+  const savedSection = saves.length ? [
+    el('div', { class: 'dialog-or' }, ['or add a saved game as round(s)']),
+    el('div', { class: 'export-row' }, [
+      saveSel,
+      el('button', { class: 'btn has-icon primary', title: 'Append this record’s round(s) to the current game', onClick: () => { const s = saves.find((x) => x.id === saveSel.value); if (s) { importSaveAsRounds(s.id, s.title || 'Untitled game'); dlg.close(); } } }, [icon('library_add'), 'Add to game']),
+    ]),
+  ] : [];
+
   const dlg = openDialog({
     title: 'Import',
     body: [
@@ -670,6 +713,7 @@ function openImportDialog() {
       el('div', { class: 'dialog-or' }, ['or paste JSON']),
       paste,
       el('div', { class: 'dialog-actions' }, [el('button', { class: 'btn primary', onClick: () => importJsonText(paste.value) }, ['Import JSON'])]),
+      ...savedSection,
     ],
   });
 
