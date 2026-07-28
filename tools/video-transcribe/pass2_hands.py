@@ -71,19 +71,21 @@ def select_haipai(mask, n_tiles, min_long_frac=0.20):
     Returns (component_mask | None, candidates)."""
     target = 3.0 * n_tiles / 4.0
     ncomp, lab, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    W = mask.shape[1]
+    H, W = mask.shape[:2]
     cand = []
     for i in range(1, ncomp):
         if stats[i, cv2.CC_STAT_AREA] < 0.0015 * mask.size:
+            continue
+        bottom = int(stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT])
+        if bottom > 0.85 * H:              # bottom score-bar overlay, not a hand
             continue
         pts = np.column_stack(np.where(lab == i)[::-1]).astype(np.float32)
         (_, _), (w, h), _ = cv2.minAreaRect(pts)
         long, short = max(w, h), max(1.0, min(w, h))
         if long < min_long_frac * W:
             continue
-        cand.append({"id": i, "ratio": round(long / short, 1),
-                     "long": int(long), "short": int(short),
-                     "bottom": int(stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT])})
+        cand.append({"id": i, "ratio": round(long / short, 1), "bottom": bottom,
+                     "long": int(long), "short": int(short)})
     # Aspect ~3N/4 alone also matches the walls, so among aspect-plausible blobs
     # pick the LOWEST one on screen — the near (player's own) hand is closest to
     # the camera, i.e. at the bottom of the frame; walls sit higher up.
