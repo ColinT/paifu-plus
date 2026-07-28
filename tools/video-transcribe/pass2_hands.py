@@ -52,58 +52,73 @@ def largest_component(mask):
     return ((lab == biggest).astype("uint8")) * 255
 
 
-def segment_tiles(crop_bgr, n_tiles):
-    """Split a hand-region crop into `n_tiles` cells.
+CELL_W, CELL_H = 44, 64  # deskewed per-tile size (tile face aspect ~ w<h)
 
-    Model: the row is a sheared parallelogram (tilted long axis, but VERTICAL
-    tile seams in the camera image), and for a haipai we know n_tiles. So we take
-    the row's x-span and cut it into n_tiles equal VERTICAL strips (no rotation —
-    that's what broke the seams before). Each strip's vertical extent comes from
-    the tile-mask in that strip, so cells track the row's tilt across x."""
-    mask = largest_component(whitish(crop_bgr))
+
+def _fit_line(x, y, iters=3):
+    """Least-squares line y=mx+b, re-fit on inliers to reject background outliers."""
+    m, b = np.polyfit(x, y, 1)
+    for _ in range(iters):
+        res = np.abs(y - (m * x + b))
+        keep = res <= max(4.0, 2.0 * np.median(res))
+        if keep.sum() < 3:
+            break
+        m, b = np.polyfit(x[keep], y[keep], 1)
+    return m, b
+
+
+def row_quad(mask):
+    """4 corners (TL,TR,BR,BL) of the tile row, from its top/bottom edge lines.
+    Seams are vertical (camera setup) so the left/right edges are the x-extent;
+    top and bottom are fitted lines, so a converging (perspective) row is a
+    general quadrilateral, not just a parallelogram."""
     cols = mask.sum(axis=0).astype(float)
-    if cols.max() == 0:
-        return [], mask, []
     present = np.where(cols > 0.15 * cols.max())[0]
     xs, xe = int(present.min()), int(present.max())
-    xr = np.arange(xs, xe + 1)
-    # per-column vertical extent of the row -> its image height profile h(x)
-    ytop = np.full(len(xr), np.nan)
-    ybot = np.full(len(xr), np.nan)
-    for j, x in enumerate(xr):
+    xr, yt, yb = [], [], []
+    for x in range(xs, xe + 1):
         ys = np.where(mask[:, x] > 0)[0]
         if len(ys):
-            ytop[j], ybot[j] = ys[0], ys[-1]
-    ok = ~np.isnan(ytop)
-    ytop = np.interp(xr, xr[ok], ytop[ok])
-    ybot = np.interp(xr, xr[ok], ybot[ok])
-    k = max(3, int(0.03 * len(xr)))
-    h = np.convolve(np.clip(ybot - ytop, 1, None), np.ones(k) / k, mode="same")
-    # perspective-aware split: image tile width ~ image tile height, so equal
-    # WORLD widths fall at equal increments of the cumulative 1/h(x).
-    cum = np.cumsum(1.0 / h)
-    cum /= cum[-1]
-    bounds = [xs] + [int(xr[np.searchsorted(cum, i / n_tiles)])
-                     for i in range(1, n_tiles)] + [xe]
-    cells, crops = [], []
-    for i in range(n_tiles):
-        xa, xb = bounds[i], bounds[i + 1]
-        if xb - xa < 2:
-            continue
-        ys = np.where(mask[:, xa:xb].sum(axis=1) > 0)[0]
-        if len(ys) == 0:
-            continue
-        y0, y1 = int(ys.min()), int(ys.max())
-        cells.append((xa, xb, y0, y1))
-        crops.append(crop_bgr[y0:y1 + 1, xa:xb])
-    return crops, mask, cells
+            xr.append(x); yt.append(ys[0]); yb.append(ys[-1])
+    xr = np.array(xr, float)
+    mt, bt = _fit_line(xr, np.array(yt, float))  # top edge line (outlier-robust)
+    mb, bb = _fit_line(xr, np.array(yb, float))  # bottom edge line
+    quad = np.float32([[xs, mt * xs + bt], [xe, mt * xe + bt],
+                       [xe, mb * xe + bb], [xs, mb * xs + bb]])
+    return quad, (xs, xe)
+
+
+def segment_tiles(crop_bgr, n_tiles):
+    """Deskew the haipai to a rectangle, then split into n_tiles equal columns.
+
+    Warping the row's quadrilateral to a rectangle removes tilt AND perspective
+    in one step, so the split is a trivial equal division and every tile crop is
+    upright at a normalized scale (much friendlier to recognition)."""
+    mask = largest_component(whitish(crop_bgr))
+    if mask.max() == 0:
+        return [], mask, None, None
+    quad, _ = row_quad(mask)
+    W, H = CELL_W * n_tiles, CELL_H
+    dst = np.float32([[0, 0], [W, 0], [W, H], [0, H]])
+    warp = cv2.warpPerspective(crop_bgr, cv2.getPerspectiveTransform(quad, dst), (W, H))
+    crops = [warp[:, i * CELL_W:(i + 1) * CELL_W] for i in range(n_tiles)]
+    return crops, mask, quad, warp
+
+
+def deskew_split(img, quad, n_tiles):
+    """Warp the haipai quad to a rectangle and cut it into n_tiles equal columns.
+    quad is (TL,TR,BR,BL) in image pixels. Returns (crops, warp)."""
+    W, H = CELL_W * n_tiles, CELL_H
+    dst = np.float32([[0, 0], [W, 0], [W, H], [0, H]])
+    warp = cv2.warpPerspective(img, cv2.getPerspectiveTransform(quad, dst), (W, H))
+    return [warp[:, i * CELL_W:(i + 1) * CELL_W] for i in range(n_tiles)], warp
 
 
 def read_hand(lib_orb, crop_bgr, n_tiles):
-    """Classify each of the n_tiles segmented cells. Returns (codes, crops, meta)."""
-    crops, mask, cells = segment_tiles(crop_bgr, n_tiles)
+    """Classify each of the n_tiles deskewed cells. Returns (codes, crops, meta)."""
+    crops, mask, quad, warp = segment_tiles(crop_bgr, n_tiles)
     codes = [tiles.classify_orb(t, lib_orb) for t in crops]
-    return codes, crops, {"cells": cells, "mask": mask}
+    return codes, crops, {"quad": quad, "warp": warp}
 
 
 def main():
@@ -117,6 +132,8 @@ def main():
     ap.add_argument("--seat", type=int, help="0-3 whose hand this is (else unknown)")
     ap.add_argument("--count", type=int, default=13, help="tile count (14 for the dealer's haipai)")
     ap.add_argument("--region", help="hand-band bbox 'x,y,w,h' (ref coords); else config.hand_band")
+    ap.add_argument("--quad", help="operator-supplied haipai corners in ref coords, "
+                                   "TL,TR,BR,BL as 'x0,y0,x1,y1,x2,y2,x3,y3' (reliable deskew)")
     ap.add_argument("--tiles", default="tiles")
     ap.add_argument("--height", type=int, default=720)
     ap.add_argument("--out", default=None)
@@ -138,18 +155,25 @@ def main():
         img = source.grab(args.at)
 
     h, w = img.shape[:2]
-    reg_spec = args.region or None
-    if reg_spec:
-        region = [int(v) for v in reg_spec.split(",")]
-    else:
-        region = cfg["regions"].get("hand_band")
-        if not region:
-            raise SystemExit("no hand region: pass --region x,y,w,h or add regions.hand_band to config")
-    R = scale_region(region, w, h, cfg["ref_width"], cfg["ref_height"])
-    hand_crop = crop(img, R)
-
+    sx, sy = w / cfg["ref_width"], h / cfg["ref_height"]
     lib_orb = tiles.load_library_orb(args.tiles)
-    codes, tile_crops, meta = read_hand(lib_orb, hand_crop, args.count)
+    hand_crop = None
+
+    if args.quad:
+        # operator-anchored corners -> reliable deskew, no auto row-detection
+        p = [float(v) for v in args.quad.split(",")]
+        quad = np.float32([[p[i] * sx, p[i + 1] * sy] for i in range(0, 8, 2)])
+        tile_crops, warp = deskew_split(img, quad, args.count)
+        codes = [tiles.classify_orb(t, lib_orb) for t in tile_crops]
+        meta = {"quad": quad, "warp": warp}
+    else:
+        region = ([int(v) for v in args.region.split(",")] if args.region
+                  else cfg["regions"].get("hand_band"))
+        if not region:
+            raise SystemExit("no hand region: pass --quad, --region x,y,w,h, or add regions.hand_band")
+        R = scale_region(region, w, h, cfg["ref_width"], cfg["ref_height"])
+        hand_crop = crop(img, R)
+        codes, tile_crops, meta = read_hand(lib_orb, hand_crop, args.count)
 
     out_dir = os.path.dirname(args.out) if args.out else "out"
     unlabeled = os.path.join(out_dir, "unlabeled")
@@ -167,14 +191,16 @@ def main():
         else:
             hand.append(code)
 
-    if args.debug:
+    if args.debug and meta["warp"] is not None:
         os.makedirs(out_dir, exist_ok=True)
-        cv2.imwrite(os.path.join(out_dir, "hand_crop.png"), hand_crop)
-        viz = hand_crop.copy()
-        for (a, b, y0, y1) in meta["cells"]:
-            cv2.rectangle(viz, (a, y0), (b, y1), (0, 0, 255), 2)
-        cv2.imwrite(os.path.join(out_dir, "hand_segments.png"), viz)
-        print(f"debug: cells={len(meta['cells'])}/{args.count} -> {out_dir}")
+        viz = (hand_crop if hand_crop is not None else img).copy()
+        cv2.polylines(viz, [meta["quad"].astype(int)], True, (0, 0, 255), 2)
+        cv2.imwrite(os.path.join(out_dir, "hand_quad.png"), viz)
+        warp = meta["warp"].copy()
+        for i in range(1, args.count):
+            cv2.line(warp, (i * CELL_W, 0), (i * CELL_W, CELL_H), (0, 0, 255), 1)
+        cv2.imwrite(os.path.join(out_dir, "hand_deskewed.png"), warp)
+        print(f"debug: deskewed {warp.shape[1]}x{warp.shape[0]}, {args.count} cells -> {out_dir}")
 
     result = {"seat": SEATS[args.seat] if args.seat is not None else None,
               "tiles_found": len(tile_crops), "hand": hand,

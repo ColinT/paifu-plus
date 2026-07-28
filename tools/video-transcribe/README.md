@@ -82,16 +82,16 @@ player to each `t`.
   from the deltas. No felt CV. Yaku/han-fu aren't on the overlay → left as a
   question (or a later result-graphic reader).
 - **Pass 2 — hands (haipai / final).** Segmentation built → `pass2_hands.py` (+ ORB
-  matcher in `tiles.py`). The close-ups are a sheared parallelogram (tilted long
-  axis, vertical tile seams) with perspective foreshortening, so: isolate the tile
-  row (largest bright blob), read its per-column vertical extent (handles the tilt
-  with no rotation), and split the x-span into the **known N** (14 dealer / 13
-  else) using a **perspective-aware** cut — each tile's width weighted by the local
-  row height, since image width scales with image height under perspective. Yields
-  N cells that track individual tiles across the whole row. Each cell is classified
-  via **ORB** (rotation/scale robust); unrecognised tiles escalate as labeled crops.
-  Remaining: recognition needs the `tiles/` library grown via the labeling loop (it
-  ships with just the dora ref); seat id is `--seat` for now (nameplate OCR later).
+  matcher in `tiles.py`). The close-ups are tilted with perspective foreshortening,
+  so we **deskew first**: fit the row's 4 corners, warp that quadrilateral to a
+  rectangle (removing tilt AND perspective), then — since it's a haipai with a
+  **known N** (14 dealer / 13 else) — split into N equal columns. Every cell comes
+  out upright at a normalized scale, then classified via **ORB**; unknowns escalate
+  as labeled crops. Corners: `--quad TL,TR,BR,BL` (operator-anchored, reliable) is
+  the recommended path — auto-detection (largest bright blob) exists but is fooled
+  by white clutter (nameplate, walls). Remaining: recognition needs the `tiles/`
+  library grown via the labeling loop (ships with just the dora ref); seat id is
+  `--seat` for now.
 - **Pass 3 — discards (河).** The genuinely hard one on this broadcast (no stable
   river shot): either heavy per-frame table-registration + replay de-dup, or
   human-assisted entry via deep-linked questions. Deferred pending a decision.
