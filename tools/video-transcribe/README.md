@@ -85,11 +85,21 @@ Notes for this show: **30,000-point start** (not 25,000); tileset uses stylized
 art and red 發/中; **aka (red fives) are handled from the start** — they are the
 reason the app has its own save format.
 
-## Open decisions (needed before pass 2/3, not pass 0)
+## Decisions
 
-- **Haipai timestamps: 1 per round (near seat) or 4 (one per seat when shown)?**
-- **Source of truth: YouTube URL or local downloaded file?** (drives `link`
-  format and the app-side review player).
+- **Haipai: 1 timestamp per round** (the near seat). If a hand can't be
+  reconstructed from that frame, the tool raises a question asking the operator
+  to add more timestamps (a cleaner/later frame, or a per-seat reveal).
+- **Source of truth: YouTube URL.** Questions link as `youtu.be/<id>?t=<sec>`.
+  Caveat that drives hosting: a YouTube source **requires a server-side frame
+  fetch** — a browser cannot read pixels from a YouTube player (cross-origin
+  canvas taint), and cannot fetch googlevideo media directly (CORS). So the
+  download+decode step (yt-dlp+ffmpeg) must run on a server; OCR itself need not.
+- **Hosting: open.** Options: (A) local CLI (this tool, no infra); (B) static app
+  + a thin serverless endpoint that turns `{videoId, timestamps}` into frames,
+  with OCR running in the browser (Tesseract.js / onnxruntime-web); (C) full
+  backend. The ML does **not** require Python — it's just the easiest home for
+  the libraries.
 
 ## Usage
 
