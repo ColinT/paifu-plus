@@ -235,7 +235,7 @@ export function parseKyoku(page: RawPage, opts: ParseOptions = {}): Kyoku {
     if (markerItems.some((t) => /ﾌﾘｺﾐ|フリコミ/.test(t.str))) loserSeat = band.seat;
 
     // Calls: landscape tiles in the final row (chi/pon/minkan) and 4-of-a-kind (ankan).
-    const calls = detectCalls(finalRow?.cells ?? [], markerItems);
+    const calls = detectCalls(finalRow?.cells ?? [], markerItems, fixedIndex(band.seat, round));
 
     // Call timing: a ポン / チー label sits just above the ツモ row at the column
     // where the call was made. That column's ツモ tile is the *claimed* tile, not
@@ -321,20 +321,25 @@ function orderByFixed<T>(players: PlayerHand[], round: number, pick: (p: PlayerH
 }
 
 /** Detect melds from the final-hand row: landscape called tiles and ankan quads. */
-function detectCalls(cells: TileCell[], bandTexts: RawText[]): Call[] {
+function detectCalls(cells: TileCell[], bandTexts: RawText[], seat: Seat): Call[] {
   const calls: Call[] = [];
   const hasChi = bandTexts.some((t) => /チー/.test(t.str));
   const hasAnkan = bandTexts.some((t) => /暗槓/.test(t.str));
   const hasMinkan = bandTexts.some((t) => /明槓|加槓|追槓/.test(t.str));
 
   // A landscape tile marks a called meld; group it with its same-face neighbours.
-  cells.forEach((c, i) => {
+  cells.forEach((c) => {
     if (!c.landscape || c.tile === null) return;
     const face = c.tile;
-    const group = cells.filter((x) => x.tile === face);
+    const group = cells.filter((x) => x.tile === face).sort((a, b) => a.x - b.x);
     const type: Call['type'] = hasChi ? 'chi' : hasMinkan ? 'daiminkan' : 'pon';
-    calls.push({ type, tiles: group.map((g) => g.tile!), calledTile: face, turn: 0, fromSeat: undefined });
-    void i;
+    // The claimed (landscape) tile's position in the meld encodes who it came
+    // from — the same convention the board uses: leftmost = kamicha, middle =
+    // toimen, rightmost = shimocha. Recover fromSeat so the board can rotate it.
+    const pos = group.findIndex((g) => g === c);
+    const d = pos === 0 ? 3 : pos === group.length - 1 ? 1 : 2;
+    const fromSeat = ((seat + d) % 4) as Seat;
+    calls.push({ type, tiles: group.map((g) => g.tile!), calledTile: face, turn: 0, fromSeat });
   });
 
   if (hasAnkan) {
