@@ -164,13 +164,40 @@ def segment_tiles(crop_bgr, n_tiles):
     return crops, comp, quad, warp, cand
 
 
+def split_by_symbols(warp, n_tiles):
+    """Cut the deskewed strip at the tiles' SYMBOLS, not on a blind even grid.
+
+    Residual skew makes an even N-split straddle boundaries — a cell ends up half
+    one tile, half the next, and classifies to neither. Each tile instead carries
+    exactly one dark symbol cluster, so the column-darkness profile peaks once per
+    tile: take the n_tiles strongest peaks as centres and put each border at the
+    whitest column between adjacent centres (the seam). Falls back to an even split
+    if the peak count is wrong."""
+    H, W = warp.shape[:2]
+    gray = cv2.cvtColor(warp, cv2.COLOR_BGR2GRAY).astype(float)
+    dark = 255 - gray[int(0.18 * H):int(0.82 * H), :].mean(axis=0)
+    dark = np.convolve(dark, np.ones(7) / 7, mode="same")
+    try:
+        from scipy.signal import find_peaks
+        pk, _ = find_peaks(dark, distance=int(0.62 * W / n_tiles), prominence=3)
+    except Exception:
+        pk = np.array([x for x in range(1, W - 1) if dark[x] >= dark[x - 1] and dark[x] > dark[x + 1]])
+    pk = sorted(sorted(pk, key=lambda p: -dark[p])[:n_tiles])
+    if len(pk) != n_tiles:
+        cw = W // n_tiles
+        borders = [i * cw for i in range(n_tiles)] + [W]
+    else:
+        borders = [0] + [pk[i] + int(np.argmin(dark[pk[i]:pk[i + 1]])) for i in range(n_tiles - 1)] + [W]
+    return [cv2.resize(warp[:, borders[i]:borders[i + 1]], (CELL_W, CELL_H)) for i in range(n_tiles)]
+
+
 def deskew_split(img, quad, n_tiles):
-    """Warp the haipai quad to a rectangle and cut it into n_tiles equal columns.
+    """Warp the haipai quad to a rectangle and cut it at the tile symbols.
     quad is (TL,TR,BR,BL) in image pixels. Returns (crops, warp)."""
     W, H = CELL_W * n_tiles, CELL_H
     dst = np.float32([[0, 0], [W, 0], [W, H], [0, H]])
     warp = cv2.warpPerspective(img, cv2.getPerspectiveTransform(quad, dst), (W, H))
-    return [warp[:, i * CELL_W:(i + 1) * CELL_W] for i in range(n_tiles)], warp
+    return split_by_symbols(warp, n_tiles), warp
 
 
 def _motion_band(shape):
