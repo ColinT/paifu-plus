@@ -133,17 +133,19 @@ def row_quad(mask, n_tiles):
     pts = (found if found is not None else cv2.findNonZero(mask)).reshape(-1, 2).astype(float)
 
     p_low = pts[np.argmax(pts[:, 1])]        # near front-bottom corner
-    p_high = pts[np.argmin(pts[:, 1])]       # opposite (far back-top) corner
+    p_high = pts[np.argmin(pts[:, 1])]       # topmost — only tells us the camera side
     cam_left = p_low[0] < p_high[0]
+    # near END face (on the low side) -> the prism height (tile face height)
     edge_x = pts[:, 0].min() if cam_left else pts[:, 0].max()
     col = pts[np.abs(pts[:, 0] - edge_x) <= 3]
-    H = col[:, 1].max() - col[:, 1].min()    # prism height (tile face height)
-    Tv = np.array([edge_x - p_low[0], col[:, 1].max() - p_low[1]])  # front-bottom -> back-bottom
-
+    H = col[:, 1].max() - col[:, 1].min()
+    # the far front-top corner is the FAR-most point of the shape (rightmost when
+    # the camera is left) — that sits on the last tile's top corner, so no
+    # extrapolation is needed; the far bottom is one tile-height straight down.
+    far_top = pts[np.argmax(pts[:, 0])] if cam_left else pts[np.argmin(pts[:, 0])]
     ft_near = p_low + [0, -H]                 # front-top on the near end
-    ft_far = p_high - Tv                      # front-top on the far end
-    fb_far = ft_far + [0, H]                  # front-bottom on the far end
-    quad = _order_quad(np.array([ft_near, ft_far, fb_far, p_low]))
+    fb_far = far_top + [0, H]                 # front-bottom on the far end
+    quad = _order_quad(np.array([ft_near, far_top, fb_far, p_low]))
     return quad, (float(quad[:, 0].min()), float(quad[:, 0].max()))
 
 
