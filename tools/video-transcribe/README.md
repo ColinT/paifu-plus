@@ -122,6 +122,19 @@ player to each `t`.
   references (vector-vs-photo domain gap). `tiles/` now covers 28 of 34 tile types
   and grows via the labeling loop. `--quad TL,TR,BR,BL` is a manual override;
   `--seat` sets the seat. `tiles.py` also keeps an ORB matcher for passes 3+.
+- **Temporal tracker (`tracker.py`).** No single frame is a clean, complete haipai —
+  every close-up is already mid-turn (a seat has drawn, maybe discarded; the drawn
+  tile is often held off the row). So the transcript is built over TIME, not from any
+  one frame: each time a seat's angle recurs we DIFF the read against its running hand
+  and emit events — **draw** (flagged rightmost/isolated tile), **tedashi** (a hand
+  tile leaves once the draw is accounted for), **tsumogiri** (the draw goes straight
+  out), and **backfill** (a tile appears that must have been held earlier but was
+  occluded — propagated back into the haipai estimate). It is conservative: a tile
+  merely *missing* from a read is occlusion, not a discard, so it is never silently
+  deleted — ambiguity becomes a timestamped **question**. This is how a haipai only
+  ever partially glimpsed (e.g. East, unreadable at reveal) still gets reconstructed
+  to 13. Core + event model done and self-tested; feeding it real multi-turn reads,
+  and calls (chi/pon/kan) + river reconciliation, are next.
 - **Pass 3 — discards (河).** The genuinely hard one on this broadcast (no stable
   river shot): either heavy per-frame table-registration + replay de-dup, or
   human-assisted entry via deep-linked questions. Deferred pending a decision.
