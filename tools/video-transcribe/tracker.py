@@ -59,6 +59,7 @@ class Tracker:
     def __init__(self, n_seats: int = 4, link_fn=None):
         self.hand: dict[int, Counter] = {s: Counter() for s in range(n_seats)}
         self.haipai: dict[int, Counter] = {s: Counter() for s in range(n_seats)}
+        self.gone: dict[int, Counter] = {s: Counter() for s in range(n_seats)}   # provisionally-missing
         self.last_t: dict[int, Optional[float]] = {s: None for s in range(n_seats)}
         self.events: list[Event] = []
         self._link = link_fn or (lambda t: None)
@@ -72,6 +73,25 @@ class Tracker:
         self.hand[seat][tile] += 1
         self.haipai[seat][tile] += 1
         self._emit(t, seat, "backfill", tile, f"{_name(tile)} held earlier, unseen")
+
+    def _discard(self, seat, tile, t, kind="discard"):
+        self.hand[seat][tile] -= 1
+        if self.hand[seat][tile] <= 0:
+            del self.hand[seat][tile]
+        self._emit(t, seat, kind, tile, _name(tile))
+
+    def _resolve_lost(self, seat, lost, t):
+        """A tile absent from the read is ambiguous — occlusion or discard. Keep it in
+        the hand the first time (flag a question); if it's STILL absent on the next
+        sighting of this seat, it was really discarded, so commit it then."""
+        for tile in lost.elements():
+            if self.gone[seat][tile] > 0:              # missing last time too -> discard
+                self.gone[seat][tile] -= 1
+                self._discard(seat, tile, t, "tedashi")
+            else:                                      # first time missing -> provisional
+                self.gone[seat][tile] += 1
+                self._emit(t, seat, "question",
+                           note=f"{_name(tile)} gone - occluded, or discarded (confirm next turn)?")
 
     def observe(self, obs: Observation):
         seat, seen = obs.seat, obs.certain()
@@ -93,45 +113,34 @@ class Tracker:
             return
 
         prev = Counter(self.hand[seat])         # copy — never alias the live hand
-        gained = seen - prev                    # in this read, not in the running hand
-        lost = prev - seen                      # in the running hand, absent from this read
+        for tile in seen:                       # a tile seen again was only occluded before
+            if self.gone[seat][tile] > 0:
+                self.gone[seat][tile] = 0
 
-        if obs.drawn is None:
-            # No draw flagged: new tiles are BACKFILL. A missing tile is ambiguous
-            # (occluded vs discarded) so we do NOT delete it — just flag a question.
-            for tile in gained.elements():
+        if obs.drawn is not None and obs.drawn in seen:
+            # Kept the draw. Turn structure = +draw, -discard; the discard is the tile
+            # that left once the draw is accounted for.
+            drawn = obs.drawn
+            self._emit(obs.t, seat, "draw", drawn, _name(drawn))
+            self.hand[seat][drawn] += 1
+            disc = (prev + Counter([drawn])) - seen
+            if sum(disc.values()) == 1:
+                self._discard(seat, next(iter(disc.elements())), obs.t, "tedashi")
+            elif sum(disc.values()) > 1:
+                self._resolve_lost(seat, disc, obs.t)     # commit persistent ones, defer the rest
+            for tile in (seen - prev - Counter([drawn])).elements():   # extras = backfill
                 self._backfill(seat, tile, obs.t)
-            if lost:
-                self._emit(obs.t, seat, "question",
-                           note=f"gone - occluded or discarded? {_hand_str(lost)}")
-            self.last_t[seat] = obs.t
-            return
-
-        drawn = obs.drawn
-        if drawn not in seen:
+        elif obs.drawn is not None:
             # drew it and put it straight to the river: tsumogiri (hand unchanged).
-            self._emit(obs.t, seat, "tsumogiri", drawn, _name(drawn))
-            for tile in gained.elements():      # anything else new is backfill
+            self._emit(obs.t, seat, "tsumogiri", obs.drawn, _name(obs.drawn))
+            for tile in (seen - prev).elements():
                 self._backfill(seat, tile, obs.t)
-            self.last_t[seat] = obs.t
-            return
-
-        # Kept the draw. Turn structure = +draw, -discard; the discard is the tile that
-        # left the hand once the draw is accounted for.
-        self._emit(obs.t, seat, "draw", drawn, _name(drawn))
-        self.hand[seat][drawn] += 1
-        disc = (prev + Counter([drawn])) - seen
-        if sum(disc.values()) == 1:
-            d = next(iter(disc.elements()))
-            self.hand[seat][d] -= 1
-            if self.hand[seat][d] <= 0:
-                del self.hand[seat][d]
-            self._emit(obs.t, seat, "tedashi", d, _name(d))
-        elif sum(disc.values()) > 1:
-            self._emit(obs.t, seat, "question",
-                       note=f"drew {_name(drawn)} but multiple left: {_hand_str(disc)}")
-        for tile in (gained - Counter([drawn])).elements():   # extra new tiles = backfill
-            self._backfill(seat, tile, obs.t)
+        else:
+            # No draw flagged: new tiles are BACKFILL; missing tiles resolve by
+            # persistence (occlusion if they come back, discard if they stay gone).
+            for tile in (seen - prev).elements():
+                self._backfill(seat, tile, obs.t)
+            self._resolve_lost(seat, prev - seen, obs.t)
         self.last_t[seat] = obs.t
 
     def transcript(self):
