@@ -16,5 +16,29 @@
     "dealer_line": [150, 676, 1100, 10],
     "riichi":      [26, 652, 1100, 20],
     "hand_band":   [430, 385, 740, 145]
+  },
+  "pass3": {
+    "note": "Discard/river skeleton (compass calibration + overlay riichi + count). Seat->player from the scoreboard; identity confirmable via nameplates when present. pos_angle_min = haipai-row tilt above which a camera is the opposite-tilt (N) seat. riichi_red_frac = min red fraction of the riichi cell to count as a badge (above the dealer-underline bleed).",
+    "pos_angle_min": 18,
+    "riichi_red_frac": 0.10,
+    "seat_geometry_map_note": "Confirmed by manual visual cross-check against nameplates/dealer-highlight (2026-07-30): the camera-geometry clusters do NOT match seat letters 1:1 for this broadcast's mount handedness.",
+    "seat_geometry_map": { "N": "N", "low_cy": "S", "dominant": "E", "other": "W" },
+    "seats": {
+      "E": { "name": "Kinoshita" },
+      "S": { "name": "Yamada" },
+      "W": { "name": "Yamawaki" },
+      "N": { "name": "Kihara" }
+    },
+    "compass": {
+      "ncc_keep": 0.65,
+      "tray_min_area_frac": 0.003,
+      "tray_max_area_frac": 0.12,
+      "candidate_disk": 90,
+      "edge_band": 17,
+      "line_tol_deg": 18,
+      "max_family": 10,
+      "iou_min": 0.40,
+      "dark_v": 45
+    }
   }
 }

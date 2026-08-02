@@ -135,9 +135,41 @@ player to each `t`.
   ever partially glimpsed (e.g. East, unreadable at reveal) still gets reconstructed
   to 13. Core + event model done and self-tested; feeding it real multi-turn reads,
   and calls (chi/pon/kan) + river reconciliation, are next.
-- **Pass 3 — discards (河).** The genuinely hard one on this broadcast (no stable
-  river shot): either heavy per-frame table-registration + replay de-dup, or
-  human-assisted entry via deep-linked questions. Deferred pending a decision.
+- **Pass 3 — discards / the river (河).** `pass3_river.py` + `compass.py`. The hard
+  one on this broadcast (no overhead shot, and river-tile OCR is *not viable* — at
+  ~40px with motion-blur two identical honours correlate ~0.78 while different tiles
+  hit ~0.74–0.82, i.e. no discriminative margin). So Pass 3 does **not** read discard
+  identities off the felt. It produces the reliable parts:
+  - **Calibration** — a per-camera top-down homography anchored on the central dice
+    tray (the "compass"), the one landmark every seat's fixed over-shoulder camera
+    sees. Calibrated once per broadcast, reused all game; any frame from that camera
+    then rectifies top-down and the four rivers land in fixed quadrants. Method
+    (`compass.py`, validated on all 4 seats): NCC-purify a camera's frames to one
+    coherent set → median (erases arms) → detect the tray by a 3-way score
+    (tile-growth proximity + temporal staticness + fill-ratio circularity;
+    colour-independent, since the tray's colour varies per camera) → deskew by
+    **line-intersection + IoU-quad** (extend Hough edges to the crop border, keep
+    only those hugging the tray blob, form quads from the two dominant angle families,
+    pick best IoU vs the blob, `getPerspectiveTransform(quad→square)`). All masks are
+    data-driven: a **static-overlay mask** (logo/scorebar, from temporal variance
+    across mixed perspectives) and a **letterbox border mask** (edge-connected
+    near-black). No hardcoded pixel positions.
+  - **Riichi** — per seat from the persistent overlay badge (`pass0_overlay`),
+    persistence-filtered; geometry-based rotated-tile detection failed the same
+    no-seam wall as the river.
+  - **Discard count / timing** — best-effort per-seat, append-only so the delta
+    between sightings is the robust signal.
+
+  Discard **identities** come from the hand tracker (`tracker.py`) for the near seat
+  and become timestamped HITL questions for opponents — matching the design. Two
+  known follow-ups: (1) the deskew squares the *compass*; extending the rectified
+  crop to include the *river* may deform its aspect and hurt recognition — revisit
+  by rectifying to the river's true aspect if needed. (2) A residual canvas rotation
+  remains (orientation-preserving rotate so the near player sits at the bottom),
+  needed before per-seat river counting is exact. Seat→player names live in
+  `config.pass3.seats`; the geometric-seat→player mapping is confirmable from the
+  scoreboard, and from each camera's opposite-side nameplate when the broadcast shows
+  one (opportunistic — not all do).
 
 Human input: the operator scrubs the video and supplies **round-start timestamps**
 (and, where the broadcast shows them, per-seat haipai-reveal timestamps). The
@@ -216,4 +248,12 @@ python pass0_overlay.py --config ... --at 690 --dump-regions --out out/x
 # pass 1: overlay event timeline for one round (riichi / score / result)
 python pass1_events.py --config config/ketteisen-wrc.json \
     --start 661 --end 980 --step 8 --out out/e1_events.json
+
+# pass 3: calibrate the 4 cameras over a round window + emit the river skeleton
+python pass3_river.py --config config/ketteisen-wrc.json \
+    --from 688 --to 900 --step 6 --calib-out out/e1_calib.json --out out/e1_river.json
+
+# reuse a saved calibration (skip recomputing the transforms):
+python pass3_river.py --config config/ketteisen-wrc.json \
+    --from 688 --to 900 --step 6 --calib out/e1_calib.json --out out/e1_river.json
 ```

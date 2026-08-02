@@ -78,8 +78,15 @@ _ORB = cv2.ORB_create(nfeatures=400)
 _BF = cv2.BFMatcher(cv2.NORM_HAMMING)
 
 
+_ORB_MIN_W = 180  # ORB's patch/edge threshold (~31px) finds nothing on a 44px tile
+
+
 def _orb_features(crop_bgr):
     g = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
+    w = g.shape[1]
+    if w < _ORB_MIN_W:                       # upscale small tile crops so ORB has pixels
+        s = _ORB_MIN_W / max(1, w)
+        g = cv2.resize(g, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC)
     return _ORB.detectAndCompute(g, None)  # (keypoints, descriptors)
 
 
